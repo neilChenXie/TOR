@@ -258,6 +258,7 @@ int create_router() {
  * 0 for success, 2 for error
  * */
 int create_raw_router() {
+	return 0;
 }
 
 /********************************************************************/
