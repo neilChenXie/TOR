@@ -257,7 +257,37 @@ int create_router() {
 /*
  * 0 for success, 2 for error
  * */
-int create_raw_router() {
+int create_raw_socket() {
+	int rv;
+	struct addrinfo *tuninfo, *res;
+	/*getaddrinfo()*/
+	rv = getaddrinfo("192.168.0.201", NULL, NULL, &tuninfo);
+	if(rv != 0) {
+		fprintf(stderr, "getaddrinfo:%s\n", gai_strerror(rv));
+		exit(1);
+	}
+	/*socket()*/
+	for(res = tuninfo; res != NULL; res = res->ai_next) {
+		router_raw_sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+		if(router_raw_sockfd == -1) {
+			perror("router:raw_socket");
+			continue;
+		}
+		/*connect socket to eth1*/
+		rv = bind(router_raw_sockfd, res->ai_addr, res->ai_addrlen);
+		if(rv == -1) {
+			close(router_raw_sockfd);
+			perror("router:raw_bind");
+			continue;
+		}
+		break;
+	}
+	/*free temp infomation*/
+	freeaddrinfo(tuninfo);
+	if (res == NULL) {
+		fprintf(stderr, "stage3: router: fail to bind raw socket\n");
+		return 2;
+	}
 	return 0;
 }
 
@@ -272,19 +302,19 @@ int proxy_udp_reader(char *buffer, int count) {
 	//char buf[MAXBUFLEN];
 	char s[INET6_ADDRSTRLEN];
 
-	printf("\nproxy: waiting to recvfrom....\n");
+	printf("proxy: waiting to recvfrom....\n");
 
 	addr_len = sizeof their_addr;
 
 	numbytes = recvfrom(proxy_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
 
 	if(numbytes != -1) {
-		printf("proxy: got packet from %s\n",
+		printf("stage1: proxy: got packet from %s\n",
 				inet_ntop(their_addr.ss_family,
 					get_in_addr((struct sockaddr *)&their_addr),
 					s, sizeof s));
-		printf("proxy: packet is %d bytes long\n", numbytes);
-		buffer[numbytes] = '\0';
+		printf("stage1: proxy: packet is %d bytes long\n", numbytes);
+		//buffer[numbytes] = '\0';
 		/*get information of router*/
 		rec_router_port[count] = get_port((struct sockaddr *)&their_addr);
 	}
@@ -303,10 +333,10 @@ int router_udp_reader(char *buffer) {
 	char src[INET6_ADDRSTRLEN];
 	//char dst[INET6_ADDRSTRLEN];
 	
-	printf("\nrouter: waiting to recvfrom....\n");
+	printf("router: waiting to recvfrom....\n");
 
 	addr_len = sizeof their_addr;
-	printf("router: router_socket:%d\n",router_sockfd);
+	//printf("router: router_socket:%d\n",router_sockfd);
 
 	numbytes = recvfrom(router_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
 	
@@ -336,7 +366,7 @@ int router_udp_sender(char *sendmsg) {
 	/*change int portnum to char*/
 	char proxyport[PORTLEN];
 	sprintf(proxyport,"%d",proxy_port);
-	printf("router: I will send to port: %s\n", proxyport);
+	printf("stage1: router: I will send to port: %s\n", proxyport);
 
 	/*set hints for getaddrinfo()*/
 	memset(&hints, 0, sizeof hints);
@@ -415,6 +445,85 @@ int router_udp_sender2(char *sendmsg) {
 	freeaddrinfo(servinfo);
 	return 0;
 }
+/**************router raw socket sender*************/
+int router_raw_sender(char *buf,struct in_addr addr_dst) {
+	struct sockaddr_in receiver_addr;
+	struct msghdr msg;
+	struct iovec iov;
+	int rv;
+	/*receiver informantion*/
+	receiver_addr.sin_family = AF_INET;
+	receiver_addr.sin_addr = addr_dst;//addr of www.csail.mit.edu
+	receiver_addr.sin_port = htonl(0);
+	msg.msg_name = &receiver_addr;
+	msg.msg_namelen = sizeof receiver_addr;
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+	msg.msg_iov->iov_base = buf;
+	msg.msg_iov->iov_len = 64;
+	msg.msg_control = 0;
+	msg.msg_controllen = 0;
+	msg.msg_flags = 0;
+	/*sendmsg*/
+	rv = sendmsg(router_raw_sockfd, &msg, 0);
+	printf("stage3: router: send through raw socket:%d\n", rv);
+	if(rv == -1) {
+		fprintf(stderr, "raw socket send failed\n");
+		return 2;
+	}
+	return 0;
+}
+/************router raw socket receiver**************/
+int router_raw_receiver(char *buf) {
+	int numbytes;//record bytes received
+	struct sockaddr_storage their_addr;//for recvfrom
+	socklen_t addr_len;//for recvfrom
+
+	printf("stage3: router:waiting to recvfrom raw socket.....\n");
+
+	addr_len = sizeof their_addr;
+	
+	numbytes = recvfrom(router_raw_sockfd, buf, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
+
+	if(numbytes != -1) {
+		//buf[numbytes] = '\0';
+	}
+	if(numbytes == -1) {
+		perror("router:recvfrom");
+		exit(1);
+	}
+	return 0;
+}
+/*************router select************************/
+int router_select() {
+	int maxfd;
+	//int nread;
+	fd_set readfd;
+	
+	FD_ZERO(&readfd);
+	FD_SET(router_sockfd, &readfd);
+	FD_SET(router_raw_sockfd, &readfd);
+	
+	if(router_sockfd > router_raw_sockfd) {
+		maxfd = router_sockfd;
+	} else {
+		maxfd = router_raw_sockfd;
+	}
+
+	/*router wait from eth1 or proxy*/
+	printf("stage3: router:wait for traffic\n");
+	select(maxfd+1, &readfd, NULL, NULL, NULL);//never timeout
+	if(FD_ISSET(router_sockfd, &readfd)) {
+		return 2;
+	}
+	if(FD_ISSET(router_raw_sockfd, &readfd)) {
+		return 3;
+	}
+	/*******/
+	return 0;
+}
+/**************************************************/
+/****************************************************/
 /*proxy UDP sender*/
 int proxy_udp_sender(int num, char *sendmsg) {
 	struct addrinfo hints, *routinfo, *res;
@@ -535,7 +644,7 @@ int tunnel_reader(char *buffer)
 	}
 
 	/*proxy wait from tunnel or router*/
-	printf("\nproxy: wait for traffic\n");
+	printf("stage2: proxy: wait for traffic\n");
 	select(maxfd+1, &readfd, NULL, NULL, NULL);//never timeout
 
 	if(FD_ISSET(proxy_sockfd, &readfd)) {
@@ -543,12 +652,12 @@ int tunnel_reader(char *buffer)
 		nread = recvfrom(proxy_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
 
 		if(nread != -1) {
-			printf("proxy: got packet from %s\n",
+			//buffer[nread] = '\0';
+			printf("stage2: proxy: got packet from %s\n",
 					inet_ntop(their_addr.ss_family,
 						get_in_addr((struct sockaddr *)&their_addr),
 						s, sizeof s));
-			printf("proxy: packet is %d bytes long\n", nread);
-			buffer[nread] = '\0';
+			printf("stage2: proxy: packet is %d bytes long\n", nread);
 		} else {
 			printf("proxy:cannot get msg from router");
 		}
@@ -565,8 +674,8 @@ int tunnel_reader(char *buffer)
 		}
 		else
 		{
-			printf("Read a packet from tunnel, packet length:%d\n", nread);
-			buffer[nread] = '\0';
+			printf("stage2: proxy: Read a packet from tunnel, packet length:%d\n", nread);
+			//buffer[nread] = '\0';
 			return 3;
 		}
 	}
@@ -582,4 +691,24 @@ int tunnel_write(char *buf) {
 		exit(1);
 	}
 	return 0;
+}
+/*************************packet manipulation**************************/
+uint16_t ip_checksum(const void *buf, size_t hdr_len)
+{
+	unsigned long sum = 0;
+	const uint16_t *ip1;
+
+	ip1 = buf;
+	while (hdr_len > 1)
+	{
+		sum += *ip1++;
+		if (sum & 0x80000000)
+			sum = (sum & 0xFFFF) + (sum >> 16);
+		hdr_len -= 2;
+	}
+
+	while (sum >> 16)
+		sum = (sum & 0xFFFF) + (sum >> 16);
+
+	return(~sum);
 }
