@@ -260,8 +260,18 @@ int create_router() {
 int create_raw_socket() {
 	int rv;
 	struct addrinfo *tuninfo, *res;
+	/*router know who they are*/
 	/*getaddrinfo()*/
-	rv = getaddrinfo("192.168.201.2", NULL, NULL, &tuninfo);
+	if(count == 0) {
+		rv = getaddrinfo(Eth1_IP, NULL, NULL, &tuninfo);
+	}
+	if(count == 1) {
+		rv = getaddrinfo(Eth2_IP, NULL, NULL, &tuninfo);
+	}
+	if(count == 2) {
+		rv = getaddrinfo(Eth3_IP, NULL, NULL, &tuninfo);
+	}
+	//rv = getaddrinfo(eth_ip, NULL, NULL, &tuninfo);
 	if(rv != 0) {
 		fprintf(stderr, "getaddrinfo:%s\n", gai_strerror(rv));
 		exit(1);

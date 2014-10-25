@@ -534,6 +534,11 @@ int proxy_udp_sender(int num, char *sendmsg) {
 	int rv;
 	/*change int portnum to char*/
 	char routport[PORTLEN];
+	/*check router num*/
+	if(num >= num_router) {
+		printf("Router num is wrong:%d\n",num);
+		exit(1);
+	}
 	sprintf(routport,"%d",rec_router_port[num]);
 
 	/*set hints for getaddrinfo()*/

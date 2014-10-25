@@ -22,12 +22,12 @@ v0.1
 #include "func.h"
 
 
+int count = 0;//multi routers
 int main(int argc, char *argv[])
 {
 	FILE *fp=NULL, *proxyfp=NULL, *routfp=NULL;
 	char recline[LINELEN];
 	char filename[FNAMELEN];
-	int count;//multi routers
 	int fpid;//fork process
 
 	/*check the input*/
@@ -75,7 +75,6 @@ int main(int argc, char *argv[])
 	/***********************************/
 
 	/*fork router process*/
-	count = 0;
 	while(count < num_router) {
 		fpid = fork();
 		if(fpid != 0) {
@@ -180,7 +179,7 @@ int main(int argc, char *argv[])
 					sprintf(recline, "ICMP from raw socket, src:%s, dst:%s, type:%d\n", ipsrc, ipdst, icmp->icmp_type);
 					write_file(filename, recline);
 					/*revise ip header*/
-					inet_pton(AF_INET, Eth1_IP, (void *)&ip->ip_dst);
+					inet_pton(AF_INET, Eth0_IP, (void *)&ip->ip_dst);
 					memset((void *)&ip->ip_sum, 0, sizeof(ip->ip_sum));
 					ip->ip_sum = ip_checksum((const void *)ip, hlenl);
 					/*send to proxy*/
@@ -232,23 +231,35 @@ int main(int argc, char *argv[])
 		}
 		if (rv == 3) {
 			//from tunnel
+			/****************test**************/
+			int to_send = 0;
+			/**********************************/
 			/*get ICMP msg*/
 			ip = (struct ip*) stage2buf;
 			inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
 			inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
+			//printf("........ip_dst........: %u\n", ip->ip_dst.s_addr);
+			//printf("........ip_dst........: %u\n", ntohl(ip->ip_dst.s_addr));
+			//router_to_send = ntohl(ip->ip_dst.s_addr)%num_router;
+			//printf("which router to send:%u\n",router_to_send);
 			if(ip->ip_p != IPPROTO_ICMP) {
 				fprintf(stderr, "proxy: not ICMP msg from tunne\n");
 				exit(1);
 			}
 			hlenl = ip->ip_hl << 2;
 			icmp = (struct icmp*)(stage2buf+hlenl);
-			sprintf(recline,"ICMP from tunnel, src:%s, dst:%s, type:%d\n", ipsrc, ipdst,icmp->icmp_type);
+			//sprintf(recline,"ICMP from tunnel, src:%s, dst:%s, type:%d\n", ipsrc, ipdst,icmp->icmp_type);
 			/*send to router*/
 			//printf("proxy: send to router with port: %d\n", rec_router_port[0]);
-			if(proxy_udp_sender(0,stage2buf) != 0) {
+			//which = 0;
+			
+			to_send = ntohl(ip->ip_dst.s_addr)%num_router;
+			printf("which router to send:%d\n",to_send);
+			if(proxy_udp_sender(0, stage2buf) != 0) {
 				fprintf(stderr, "proxy:cannot send ICMP to router");
 				exit(1);
 			}
+			sprintf(recline,"ICMP from tunnel, src:%s, dst:%s, type:%d\n", ipsrc, ipdst,icmp->icmp_type);
 		}
 		//printf("writein:%s\n",recline);
 		sprintf(filename, "stage%d.proxy.out", num_stage);

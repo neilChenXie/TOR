@@ -1,4 +1,8 @@
-#define Eth1_IP "10.0.2.15"
+#define Eth0_IP "10.0.2.15"
+#define Eth1_IP "192.168.201.2"
+#define Eth2_IP "192.168.202.2"
+#define Eth3_IP "192.168.203.2"
+#define Eth4_IP "192.168.204.2"
 #define PORTNUM "0"
 #define PORTLEN 10
 #define MAXBUFLEN 100
@@ -9,6 +13,8 @@
 /*config*/
 extern int num_stage;
 extern int num_router;
+/*count*/
+extern int count;//for router to know who they are
 /*router*/
 extern int router_sockfd;
 extern int router_port;
