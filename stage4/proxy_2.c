@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 	//	if(fseek(proxyfp, 0L, SEEK_END) == -1) { //go to end of log file
 	//		printf("fseek doesn\'t work");
 	//	}
-		sprintf(recline,"stage%d\nproxy port:%d\n",num_stage, proxy_port);
+		sprintf(recline,"stage1\nproxy port:%d\n",proxy_port);
 		fputs(recline,proxyfp);
 		fclose(proxyfp);
 		proxyfp = NULL;
