@@ -261,7 +261,7 @@ int create_raw_socket() {
 	int rv;
 	struct addrinfo *tuninfo, *res;
 	/*getaddrinfo()*/
-	rv = getaddrinfo("192.168.0.201", NULL, NULL, &tuninfo);
+	rv = getaddrinfo("192.168.201.2", NULL, NULL, &tuninfo);
 	if(rv != 0) {
 		fprintf(stderr, "getaddrinfo:%s\n", gai_strerror(rv));
 		exit(1);
