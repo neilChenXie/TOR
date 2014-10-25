@@ -314,7 +314,7 @@ int proxy_udp_reader(char *buffer, int count) {
 					get_in_addr((struct sockaddr *)&their_addr),
 					s, sizeof s));
 		printf("stage1: proxy: packet is %d bytes long\n", numbytes);
-		//buffer[numbytes] = '\0';
+		buffer[numbytes] = '\0';
 		/*get information of router*/
 		rec_router_port[count] = get_port((struct sockaddr *)&their_addr);
 	}
@@ -651,7 +651,7 @@ int tunnel_reader(char *buffer)
 		nread = recvfrom(proxy_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
 
 		if(nread != -1) {
-			//buffer[nread] = '\0';
+			buffer[nread] = '\0';
 			printf("stage2: proxy: got packet from %s\n",
 					inet_ntop(their_addr.ss_family,
 						get_in_addr((struct sockaddr *)&their_addr),
