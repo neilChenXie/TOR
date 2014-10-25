@@ -522,7 +522,6 @@ int router_select() {
 	/*******/
 	return 0;
 }
-/**************************************************/
 /****************************************************/
 /*proxy UDP sender*/
 int proxy_udp_sender(int num, char *sendmsg) {
