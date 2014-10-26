@@ -14,7 +14,11 @@
 #include <linux/if_tun.h>
 #include <net/if.h>
 #include <fcntl.h>
+#include <netinet/in.h>
+#include <netinet/ip_icmp.h>
 #include "func.h"
+#include <inttypes.h>
+
 int tun_fd = -1;
 int num_stage = 0;
 int num_router = 0;
@@ -22,10 +26,15 @@ int proxy_sockfd=0;
 int proxy_port=0;
 int router_sockfd=0;
 int router_port=0;
-int rec_router_port[MAXROUTER];
+uint16_t rec_router_port[MAXROUTER];
 
 /*stage3*/
 int router_raw_sockfd=0;
+/********/
+/*stage5*/
+//char rec_router_ip[MAXROUTER][20];
+char router_ip[20];
+router_store router_cir_info;
 /********/
 
 /***************read file functons*************/
@@ -133,10 +142,10 @@ void *get_in_addr(struct sockaddr *sa)
 /*get port num*/
 unsigned short get_port(struct sockaddr *sa) 
 {
-	//if(sa->sa_family == AF_INET) {
+	if(sa->sa_family == AF_INET) {
 		return ntohs(((struct sockaddr_in*)sa)->sin_port);
-	//}
-	//return ntohs(((struct sockaddr_in6*)sa)->sin6_port);
+	}
+	return ntohs(((struct sockaddr_in6*)sa)->sin6_port);
 }
 /*****************************************************************/
 
@@ -263,14 +272,15 @@ int create_raw_socket() {
 	/*router know who they are*/
 	/*getaddrinfo()*/
 	if(count == 0) {
-		rv = getaddrinfo(Eth1_IP, NULL, NULL, &tuninfo);
+		sprintf(router_ip, "%s\n", Eth1_IP);
 	}
 	if(count == 1) {
-		rv = getaddrinfo(Eth2_IP, NULL, NULL, &tuninfo);
+		sprintf(router_ip, "%s\n", Eth2_IP);
 	}
 	if(count == 2) {
-		rv = getaddrinfo(Eth3_IP, NULL, NULL, &tuninfo);
+		sprintf(router_ip, "%s\n", Eth3_IP);
 	}
+	rv = getaddrinfo(router_ip, NULL, NULL, &tuninfo);
 	//rv = getaddrinfo(eth_ip, NULL, NULL, &tuninfo);
 	if(rv != 0) {
 		fprintf(stderr, "getaddrinfo:%s\n", gai_strerror(rv));
@@ -310,20 +320,24 @@ int proxy_udp_reader(char *buffer, int count) {
 	struct sockaddr_storage their_addr;
 	socklen_t addr_len;
 	//char buf[MAXBUFLEN];
-	char s[INET6_ADDRSTRLEN];
+	//char s[INET6_ADDRSTRLEN];
 
-	printf("proxy: waiting to recvfrom....\n");
+	//printf("proxy: waiting to recvfrom....\n");
 
 	addr_len = sizeof their_addr;
 
 	numbytes = recvfrom(proxy_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
 
 	if(numbytes != -1) {
-		printf("stage1: proxy: got packet from %s\n",
-				inet_ntop(their_addr.ss_family,
-					get_in_addr((struct sockaddr *)&their_addr),
-					s, sizeof s));
-		printf("stage1: proxy: packet is %d bytes long\n", numbytes);
+		//printf("stage1: proxy: got packet from %s\n",
+		//		inet_ntop(their_addr.ss_family,
+		//			get_in_addr((struct sockaddr *)&their_addr),
+		//			s, sizeof s));
+		//sprintf(rec_router_ip[count],"%s\n",
+		//		inet_ntop(their_addr.ss_family,
+		//			get_in_addr((struct sockaddr *)&their_addr),
+		//			s, sizeof s));
+		//printf("stage1: proxy: packet is %d bytes long\n", numbytes);
 		buffer[numbytes] = '\0';
 		/*get information of router*/
 		rec_router_port[count] = get_port((struct sockaddr *)&their_addr);
@@ -335,15 +349,46 @@ int proxy_udp_reader(char *buffer, int count) {
 	}
 	return 0;
 }
+/********************proxy_cir_reader**********************/
+int proxy_cir_reader(char *buffer) {
+	int numbytes;
+	struct sockaddr_storage their_addr;
+	socklen_t addr_len;
+	//char buf[MAXBUFLEN];
+	//char s[INET6_ADDRSTRLEN];
+	//printf("proxy: waiting to recvfrom....\n");
+	addr_len = sizeof their_addr;
+	printf("stage5: proxy waiting for done message\n");
+
+	numbytes = recvfrom(proxy_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
+	if(numbytes != -1) {
+		//printf("stage1: proxy: got packet from %s\n",
+		//		inet_ntop(their_addr.ss_family,
+		//			get_in_addr((struct sockaddr *)&their_addr),
+		//			s, sizeof s));
+		//sprintf(rec_router_ip[count],"%s\n",
+		//		inet_ntop(their_addr.ss_family,
+		//			get_in_addr((struct sockaddr *)&their_addr),
+		//			s, sizeof s));
+		//printf("stage1: proxy: packet is %d bytes long\n", numbytes);
+		buffer[numbytes] = '\0';
+		/*get information of router*/
+	}
+	if (numbytes == -1) {
+		perror("recvfrom");
+		exit(1);
+	}
+	return 0;
+}
 /*router UDP reader*/
 int router_udp_reader(char *buffer) {
 	int numbytes;
 	struct sockaddr_storage their_addr;
 	socklen_t addr_len;
-	char src[INET6_ADDRSTRLEN];
+	//char src[INET6_ADDRSTRLEN];
 	//char dst[INET6_ADDRSTRLEN];
 	
-	printf("router: waiting to recvfrom....\n");
+	//printf("router: waiting to recvfrom....\n");
 
 	addr_len = sizeof their_addr;
 	//printf("router: router_socket:%d\n",router_sockfd);
@@ -351,11 +396,43 @@ int router_udp_reader(char *buffer) {
 	numbytes = recvfrom(router_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
 	
 	if(numbytes != -1) {
-		inet_ntop(their_addr.ss_family,
-					get_in_addr((struct sockaddr *)&their_addr),
-					src, sizeof src);
-		printf("router: got packet from %s\n", src);
-		printf("router: packet is %d bytes long\n", numbytes);
+		//inet_ntop(their_addr.ss_family,
+		//			get_in_addr((struct sockaddr *)&their_addr),
+		//			src, sizeof src);
+		//printf("router: got packet from %s\n", src);
+		//printf("router: packet is %d bytes long\n", numbytes);
+		buffer[numbytes] = '\0';
+	}
+	if(numbytes == -1) {
+		perror("recvform");
+		exit(1);
+	}
+	return 0;
+}
+/*router UDP reader*/
+int router_cir_reader(char *buffer) {
+	int numbytes;
+	struct sockaddr_storage their_addr;
+	socklen_t addr_len;
+	//char src[INET6_ADDRSTRLEN];
+	//char dst[INET6_ADDRSTRLEN];
+	
+	//printf("router: waiting to recvfrom....\n");
+
+	addr_len = sizeof their_addr;
+	//printf("router: router_socket:%d\n",router_sockfd);
+
+	numbytes = recvfrom(router_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
+	
+	if(numbytes != -1) {
+		//inet_ntop(their_addr.ss_family,
+		//			get_in_addr((struct sockaddr *)&their_addr),
+		//			src, sizeof src);
+		//printf("router: got packet from %s\n", src);
+		//printf("router: packet is %d bytes long\n", numbytes);
+		/**************stage5: get port number************/
+		router_cir_info.pre_port = get_port((struct sockaddr *)&their_addr);
+		/*************************************************/
 		buffer[numbytes] = '\0';
 	}
 	if(numbytes == -1) {
@@ -429,7 +506,7 @@ int router_udp_sender2(char *sendmsg) {
 	/*change int portnum to char*/
 	char proxyport[PORTLEN];
 	sprintf(proxyport,"%d",proxy_port);
-	printf("router: I will send to port: %s\n", proxyport);
+	printf("stage2: router: I will send to port: %s\n", proxyport);
 
 	/*set hints for getaddrinfo()*/
 	memset(&hints, 0, sizeof hints);
@@ -438,6 +515,42 @@ int router_udp_sender2(char *sendmsg) {
 	hints.ai_flags = AI_PASSIVE;
 	/*get proxy info*/
 	if((rv = getaddrinfo(NULL, proxyport, &hints, &servinfo)) != 0) {
+		fprintf(stderr, "getaddrinfo:%s\n", gai_strerror(rv));
+		return 1;
+	}
+	/*create send socket*/
+	res = servinfo;
+	if (res == NULL) {
+		fprintf(stderr, "router:failed to bind socket\n");
+		return -1;
+	}
+	numbytesent = sendto(router_sockfd, sendmsg, MAXBUFLEN-1, 0, res->ai_addr, res->ai_addrlen);
+	if (numbytesent == -1) {
+		perror("router:sendto");
+		exit(1);
+	}
+	freeaddrinfo(servinfo);
+	return 0;
+}
+/*************router circuit setup sender***********/
+int router_cir_sender(char *sendmsg, uint16_t port) {
+	struct addrinfo hints, *servinfo, *res;
+	//struct sockaddr res_addr;
+	//struct sockaddr_in *res_out_addr;
+	//socklen_t addrlen;
+	//int sendsocket;
+	int numbytesent;
+	int rv;
+	/*change int portnum to char*/
+	char sendport[PORTLEN];
+	sprintf(sendport,"%d",port);
+	/*set hints for getaddrinfo()*/
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_flags = AI_PASSIVE;
+	/*get proxy info*/
+	if((rv = getaddrinfo(NULL, sendport, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo:%s\n", gai_strerror(rv));
 		return 1;
 	}
@@ -539,7 +652,7 @@ int proxy_udp_sender(int num, char *sendmsg) {
 	//struct sockaddr res_addr;
 	//struct sockaddr_in *res_out_addr;
 	//socklen_t addrlen;
-	int sendsocket;
+	//int sendsocket;
 	int numbytesent;
 	int rv;
 	/*change int portnum to char*/
@@ -557,16 +670,18 @@ int proxy_udp_sender(int num, char *sendmsg) {
 		return 1;
 	}
 	/*create sendsocket*/
-	for (res = routinfo; res != NULL; res = res->ai_next) {
-		sendsocket = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-		if (sendsocket == -1) {
-			perror("proxy:sendsocket");
-			continue;
-		}
-		break;
-	}
+	res = routinfo;
+	//for (res = routinfo; res != NULL; res = res->ai_next) {
+	//	sendsocket = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+	//	if (sendsocket == -1) {
+	//		perror("proxy:sendsocket");
+	//		continue;
+	//	}
+	//	break;
+	//}
 	/*send infomation*/
-	numbytesent = sendto(sendsocket, sendmsg, MAXBUFLEN-1, 0, res->ai_addr, res->ai_addrlen);
+	//numbytesent = sendto(sendsocket, sendmsg, MAXBUFLEN-1, 0, res->ai_addr, res->ai_addrlen);
+	numbytesent = sendto(proxy_sockfd, sendmsg, MAXBUFLEN-1, 0, res->ai_addr, res->ai_addrlen);
 	if (numbytesent == -1) {
 		perror("proxy:sendto");
 		exit(1);
@@ -638,7 +753,7 @@ int tunnel_reader(char *buffer)
 	struct sockaddr_storage their_addr;
 	socklen_t addr_len;
 	//char buf[MAXBUFLEN];
-	char s[INET6_ADDRSTRLEN];
+	//char s[INET6_ADDRSTRLEN];
 
 	FD_ZERO(&readfd);//reset a fd_set
 	FD_SET(proxy_sockfd, &readfd);
@@ -662,11 +777,11 @@ int tunnel_reader(char *buffer)
 
 		if(nread != -1) {
 			buffer[nread] = '\0';
-			printf("stage2: proxy: got packet from %s\n",
-					inet_ntop(their_addr.ss_family,
-						get_in_addr((struct sockaddr *)&their_addr),
-						s, sizeof s));
-			printf("stage2: proxy: packet is %d bytes long\n", nread);
+			//printf("stage2: proxy: got packet from %s\n",
+			//		inet_ntop(their_addr.ss_family,
+			//			get_in_addr((struct sockaddr *)&their_addr),
+			//			s, sizeof s));
+			//printf("stage2: proxy: packet is %d bytes long\n", nread);
 		} else {
 			printf("proxy:cannot get msg from router");
 		}
@@ -683,8 +798,8 @@ int tunnel_reader(char *buffer)
 		}
 		else
 		{
-			printf("stage2: proxy: Read a packet from tunnel, packet length:%d\n", nread);
-			//buffer[nread] = '\0';
+			//printf("stage2: proxy: Read a packet from tunnel, packet length:%d\n", nread);
+			buffer[nread] = '\0';
 			return 3;
 		}
 	}
@@ -702,6 +817,7 @@ int tunnel_write(char *buf) {
 	return 0;
 }
 /*************************packet manipulation**************************/
+/*************calculate ip checksum******************/
 uint16_t ip_checksum(const void *buf, size_t hdr_len)
 {
 	unsigned long sum = 0;
@@ -720,4 +836,33 @@ uint16_t ip_checksum(const void *buf, size_t hdr_len)
 		sum = (sum & 0xFFFF) + (sum >> 16);
 
 	return(~sum);
+}
+/******************extend message create**********************/
+int extend_msg_create(tormsg_t *extmsg, uint16_t cirid, uint16_t port) {
+	char *local_ip = "127.0.0.1";
+
+	/*modify the ip struct*/
+	memset(extmsg, 0, 28);
+	inet_pton(AF_INET, local_ip, (void *)&extmsg->ip.ip_dst);
+	inet_pton(AF_INET, local_ip, (void *)&extmsg->ip.ip_src);
+	extmsg->ip.ip_p = 253;
+	/*modify the payload*/
+	extmsg->type = 0x52;
+	extmsg->circuit_id = cirid;
+	extmsg->udp_port = port;
+	return 0;
+}
+/******************reply message create*********************/
+int reply_msg_create(tormsg_t *extmsg, uint16_t port) {
+	//char *local_ip = "127.0.0.1";
+
+	/*modify the ip struct*/
+	//memset(extmsg, 0, 28);
+	//inet_pton(AF_INET, local_ip, (void *)&extmsg->ip.ip_dst);
+	//inet_pton(AF_INET, local_ip, (void *)&extmsg->ip.ip_src);
+	//extmsg->ip.ip_p = 253;
+	/*modify the payload*/
+	extmsg->type = 0x53;
+	extmsg->udp_port = port;
+	return 0;
 }

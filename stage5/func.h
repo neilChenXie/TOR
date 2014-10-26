@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #define Eth0_IP "10.0.2.15"
 #define Eth1_IP "192.168.201.2"
 #define Eth2_IP "192.168.202.2"
@@ -10,6 +11,19 @@
 #define FNAMELEN 20
 #define MAXROUTER 10
 #define MAXMSGLEN 100
+/*stage5 payload*/
+typedef struct{
+	struct ip ip;
+	uint8_t type;
+	uint16_t circuit_id;
+	uint16_t udp_port;
+}tormsg_t;
+typedef struct{
+	uint16_t in_circuit;
+	uint16_t out_circuit;
+	uint16_t next_port;
+	uint16_t pre_port;
+}router_store;
 /*config*/
 extern int num_stage;
 extern int num_router;
@@ -19,10 +33,13 @@ extern int count;//for router to know who they are
 extern int router_sockfd;
 extern int router_port;
 extern int router_raw_sockfd;
+extern router_store router_cir_info;
 /*proxy*/
 extern int proxy_sockfd;
 extern int proxy_port;
-extern int rec_router_port[MAXROUTER];
+extern uint16_t rec_router_port[MAXROUTER];
+extern char router_ip[20];
+//extern char rec_router_ip[MAXROUTER][20];
 extern int tun_fd;
 
 /*read config functions*/
@@ -40,10 +57,13 @@ void *get_in_addr(struct sockaddr *sa);
 unsigned short get_port(struct sockaddr *sa);
 /*communication functions*/
 int proxy_udp_reader(char *buffer, int count);
+int proxy_cir_reader(char *buffer);
 int proxy_udp_sender(int num, char *sendmsg);
 int router_udp_reader(char *buffer);
+int router_cir_reader(char *buffer);
 int router_udp_sender(char *sendmsg);//create
 int router_udp_sender2(char *sendmsg);
+int router_cir_sender(char *sendmsg, uint16_t port);
 int router_raw_receiver(char *buf);//3
 int router_select();//3
 int router_raw_sender(char *buf, struct in_addr addr_dst);//3
@@ -51,3 +71,5 @@ int tunnel_reader(char *buffer);
 int tunnel_write(char *buf);
 /*packet manipulation*/
 uint16_t ip_checksum(const void *buf, size_t hdr_len);
+int extend_msg_create(tormsg_t *extmsg, uint16_t cirid, uint16_t port);
+int reply_msg_create(tormsg_t *extmsg, uint16_t port);
