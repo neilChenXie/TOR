@@ -169,6 +169,9 @@ int main(int argc, char *argv[])
 								/*send back to proxy*/
 								router_cir_sender((char *)routbuf, router_cir_info.pre_port);
 								printf("router %d circuit info: in_circuit:%d, out_circuit:%d, next_port:%d, pre_port:%d\n", count+1, router_cir_info.in_circuit, router_cir_info.out_circuit, router_cir_info.next_port, router_cir_info.pre_port);
+								/*record to log file*/
+								sprintf(recline,"new extend circuit: incoming: %d, outgoing :%d at %d\n", router_cir_info.in_circuit, router_cir_info.out_circuit, router_cir_info.next_port);
+								write_file(filename, recline);
 							} else {
 								/*rely to next hop*/
 								extend_msg_create(router_tor, router_cir_info.out_circuit, port);
@@ -181,7 +184,13 @@ int main(int argc, char *argv[])
 								/*record in_coming information*/
 								router_cir_info.pre_port = pre_port;
 								router_cir_info.in_circuit = router_tor->circuit_id;
+								router_cir_info.next_port = 0xffff;
+								uint16_t circuitid = 256*(count+1)+1;
+								router_cir_info.out_circuit = circuitid;
 								printf("router %d circuit info: in_circuit:%d, out_circuit:%d, next_port:%d, pre_port:%d\n", count+1, router_cir_info.in_circuit, router_cir_info.out_circuit, router_cir_info.next_port, router_cir_info.pre_port);
+								/*record to log file*/
+								sprintf(recline,"new extend circuit: incoming: %d, outgoing :%d at %d\n", router_cir_info.in_circuit, router_cir_info.out_circuit, router_cir_info.next_port);
+								write_file(filename, recline);
 								/*generate reply msg*/
 								reply_msg_create(router_tor, router_cir_info.in_circuit);
 								//printf("stage5: router %d: now I can jump out of connection status\n",count+1);
@@ -233,7 +242,7 @@ int main(int argc, char *argv[])
 				/*from proxy*/
 				if (rv == 2) {
 					char routbuf[MAXBUFLEN];
-					router_cir_reader(routbuf);//.......need change?.....
+					router_cir_reader(routbuf);//.......need change?no?.....
 					////	/*get info in ICMP*/
 					//ip = (struct ip*) routbuf;
 					//inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
@@ -303,7 +312,8 @@ int main(int argc, char *argv[])
 	/*random pick routers*/
 	rand_hop(all_router);
 	for(m = 0; m < num_router; m++) {
-		printf("hop %d router %d\n", m+1, all_router[m]);
+		sprintf(recline, "hop %d router %d\n", m+1, all_router[m]);
+		write_file(filename,recline);
 	}
 	/*create tor message*/
 	/*calculate circuit*/
@@ -330,26 +340,31 @@ int main(int argc, char *argv[])
 			//printf("Proxy: get tormsg back with type:%d\n",re_check->type);
 			if(re_check->type == 83) {
 				printf("stage5:...%d...create circuit\n",i);
+				/*record to log file*/
+				sprintf(recline, "pkt from port: %d, length: 3, contents:\nincoming extend-done circuit done, incoming: %d from port: %d\n", pre_port, re_check->circuit_id, pre_port);
+				write_file(filename, recline);
 				break;
 			} else {
 				printf("!!!!got message but not circuit-extend-done!!!\n");
 			}
 		}
 	}
+	printf("stage5: proxy: ready to rely message.......\n");
+	int first_hop = all_router[0];
 	/******************************************************/
-	//while(1) {
-	//	char stage2buf[MAXBUFLEN] = "";
-	//	int rv;
-	//	/*for ICMP msg*/
-	//	struct ip *ip;
-	//	int hlenl;
-	//	struct icmp *icmp;
-	//	char ipdst[20];
-	//	char ipsrc[20];
-	//	
-	//	rv = tunnel_reader(stage2buf);
-	//	printf("stage2: proxy: rv:%d\n",rv);
-	//	if (rv == 2) {
+	while(1) {
+		char stage2buf[MAXBUFLEN] = "";
+		int rv;
+		/*for ICMP msg*/
+		struct ip *ip;
+		int hlenl;
+		struct icmp *icmp;
+		char ipdst[20];
+		char ipsrc[20];
+		
+		rv = tunnel_reader(stage2buf);
+		printf("stage5: proxy: rv:%d\n",rv);
+		if (rv == 2) {
 	//		//from router
 	//		/*get ICMP msg*/
 	//		ip = (struct ip*) stage2buf;
@@ -368,8 +383,8 @@ int main(int argc, char *argv[])
 	//			fprintf(stderr, "proxy:cannot write to tunnel");
 	//			exit(1);
 	//		}
-	//	}
-	//	if (rv == 3) {
+		}
+		if (rv == 3) {
 	//		//from tunnel
 	//		int to_send = 0;
 	//		/*get ICMP msg*/
@@ -398,8 +413,8 @@ int main(int argc, char *argv[])
 	//	if(write_file(filename, recline) != 0) {
 	//		fprintf(stderr, "proxy: cannot write to file");
 	//		exit(1);
-	//	}
-	//}
+		}
+	}
 	/**********************/
 	return 0;
 }

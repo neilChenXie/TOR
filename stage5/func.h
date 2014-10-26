@@ -7,7 +7,7 @@
 #define PORTNUM "0"
 #define PORTLEN 10
 #define MAXBUFLEN 100
-#define LINELEN 50
+#define LINELEN 100//this maybe not enough for stage 5
 #define FNAMELEN 20
 #define MAXROUTER 10
 #define MAXMSGLEN 100
@@ -18,6 +18,11 @@ typedef struct{
 	uint16_t circuit_id;
 	uint16_t udp_port;
 }tormsg_t;
+typedef struct{
+	uint8_t type;
+	uint16_t circuit_id;
+	char msg[100];
+}torrely_t;
 typedef struct{
 	uint16_t in_circuit;
 	uint16_t out_circuit;

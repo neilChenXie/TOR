@@ -400,6 +400,7 @@ int proxy_cir_reader(char *buffer) {
 		//			get_in_addr((struct sockaddr *)&their_addr),
 		//			s, sizeof s));
 		//printf("stage1: proxy: packet is %d bytes long\n", numbytes);
+		pre_port = get_port((struct sockaddr *)&their_addr);
 		buffer[numbytes] = '\0';
 		/*get information of router*/
 	}
