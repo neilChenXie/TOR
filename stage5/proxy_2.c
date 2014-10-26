@@ -23,6 +23,7 @@ v0.1
 
 
 int count = 0;//multi routers
+router_store router_cir_info;
 int main(int argc, char *argv[])
 {
 	FILE *fp=NULL, *proxyfp=NULL, *routfp=NULL;
@@ -117,9 +118,9 @@ int main(int argc, char *argv[])
 			/*stage 3 create raw socket*/
 			create_raw_socket();
 			/*get port*/
-			printf("router_port:%d\n", router_port);
-			printf("router_socket:%d\n", router_sockfd);
-			printf("router_raw_socket:%d\n", router_raw_sockfd);
+			//printf("router_port:%d\n", router_port);
+			//printf("router_socket:%d\n", router_sockfd);
+			//printf("router_raw_socket:%d\n", router_raw_sockfd);
 			/*recorde*/
 			/*create router log file*/
 			sprintf(filename, "stage%d.router%d.out", num_stage,count+1);
@@ -131,16 +132,95 @@ int main(int argc, char *argv[])
 			fputs(recline,routfp);
 			fclose(routfp);
 			/**************************/
+			/*for stage 5 of router*/
+			int rv;
+			/*initial router circuit form*/
+			memset(&router_cir_info, 0, sizeof router_cir_info);
+			while(1) {
+				rv = 0;
+				rv = router_select();
+				if (rv == 2) {
+					char routbuf[MAXBUFLEN];
+					router_cir_reader(routbuf);
+					uint16_t port; 
+					uint8_t type;
+					tormsg_t *router_tor;
+					router_tor = (tormsg_t *) routbuf;
+					/*information in recv_msg*/
+					type = router_tor->type;
+					port = router_tor->udp_port;
+					/*check type*/
+					if(type == 0x52) {
+						/*check the port num is me*/
+						if(port != 0xffff) {
+							/*check out_circuit*/
+							if(router_cir_info.next_port == 0) {
+								/*record pre port and circuit message*/
+								router_cir_info.pre_port = pre_port;
+								router_cir_info.in_circuit = router_tor->circuit_id;
+								/*recalculate circuit ID*/
+								uint16_t circuitid = 256*(count+1)+1;
+								/*save next hop infomation*/
+								router_cir_info.next_port = port;
+								router_cir_info.out_circuit = circuitid;
+								/*generate reply msg*/
+								reply_msg_create(router_tor, router_cir_info.in_circuit);
+								/*send back to proxy*/
+								router_cir_sender((char *)routbuf, router_cir_info.pre_port);
+								printf("router %d circuit info: in_circuit:%d, out_circuit:%d, next_port:%d, pre_port:%d\n", count+1, router_cir_info.in_circuit, router_cir_info.out_circuit, router_cir_info.next_port, router_cir_info.pre_port);
+							} else {
+								/*rely to next hop*/
+								extend_msg_create(router_tor, router_cir_info.out_circuit, port);
+								router_cir_sender((char *)routbuf, router_cir_info.next_port);
+							}
+						} else {
+							/*when the port is 0xffff*/
+							if(router_cir_info.next_port == 0){
+								/*I'm the last hop*/
+								/*record in_coming information*/
+								router_cir_info.pre_port = pre_port;
+								router_cir_info.in_circuit = router_tor->circuit_id;
+								printf("router %d circuit info: in_circuit:%d, out_circuit:%d, next_port:%d, pre_port:%d\n", count+1, router_cir_info.in_circuit, router_cir_info.out_circuit, router_cir_info.next_port, router_cir_info.pre_port);
+								/*generate reply msg*/
+								reply_msg_create(router_tor, router_cir_info.in_circuit);
+								printf("stage5: router %d: now I can jump out of connection status\n",count+1);
+								/*send back to proxy*/
+								router_cir_sender((char *)routbuf, router_cir_info.pre_port);
+								/*jump out of connection statues*/
+							} else {
+								/*I'm not the last hop*/
+								/*send to next hop existed*/
+								extend_msg_create(router_tor, router_cir_info.out_circuit, port);
+								router_cir_sender((char *)routbuf, router_cir_info.next_port);
+							}
+						}
+					}
+					if(type == 0x53) {
+						/*if this is the last reply msg to send*/
+						if(port != 0xffff) {
+							/*change the circuit id*/
+							reply_msg_create(router_tor, router_cir_info.in_circuit);
+							/*send back to previous*/
+							router_cir_sender((char *)routbuf, router_cir_info.pre_port);
+						} else {
+							/*change the circuit id*/
+							reply_msg_create(router_tor, router_cir_info.in_circuit);
+							/*send back to previous*/
+							router_cir_sender((char *)routbuf, router_cir_info.pre_port);
+							/*jump out of connection status*/
+							printf("stage5:router %d: now I can jump out of connection status\n",count+1);
+						}
+					}
+				}
+			}
+			/*****************************************/
 			/*for stage 2 of router*/
 			struct ip *ip;
 			int hlenl;
 			struct icmp *icmp;
 			char ipdst[20];
 			char ipsrc[20];
-			int rv;
-			/****stage5*******/
-			memset(&router_cir_info, 0, sizeof router_cir_info);
-			/*****************/
+			/**********************/
 			while(1) {
 				/*wait ICMP msg from proxy*/
 				/*use accept instead*/
@@ -149,35 +229,7 @@ int main(int argc, char *argv[])
 				/*from proxy*/
 				if (rv == 2) {
 					char routbuf[MAXBUFLEN];
-					router_cir_reader(routbuf);
-					/****************stage5*******************/
-					tormsg_t *router_tor;
-					router_tor = (tormsg_t *) routbuf;
-					uint16_t port = router_tor->udp_port;
-					/*check the port num is me*/
-					if(port == router_port) {
-						router_cir_info.in_circuit = router_tor->circuit_id;
-						printf("router received message: circuit_id:%d, pre_port:%d\n", router_cir_info.in_circuit, router_cir_info.pre_port);
-						/*generate reply msg*/
-						reply_msg_create(router_tor, router_cir_info.pre_port);
-						/*send back to proxy*/
-						router_cir_sender((char *)routbuf, router_cir_info.pre_port);
-
-					} else {
-						/*when the port is not me*/
-						router_cir_info.in_circuit = router_tor->circuit_id;
-						printf("router received message: circuit_id:%d, pre_port:%d\n", router_cir_info.in_circuit, router_cir_info.pre_port);
-						/*continue to send*/
-						/*check don't has port*/
-						if(router_cir_info.next_port == 0){
-							/*recalculate circuit ID*/
-							uint16_t circuitid = 256*(count+1)+1;
-							extend_msg_create(router_tor, circuitid, port);
-							/*forward directly*/
-							router_cir_sender(routbuf,port);
-						}
-					}
-					/*****************************************/
+					router_cir_reader(routbuf);//.......need change?.....
 					////	/*get info in ICMP*/
 					//ip = (struct ip*) routbuf;
 					//inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
@@ -249,17 +301,23 @@ int main(int argc, char *argv[])
 	int i = 0;
 	/******************/
 	for(i=0;i<=2;i++) {
-		extend_msg_create(&torext, circuit, rec_router_port[i]);
+		if(i != 2) {
+			extend_msg_create(&torext, circuit, rec_router_port[i+1]);
+		} else {
+			extend_msg_create(&torext, circuit, 0xffff);
+		}
 		/*send to 1st OR*/
 		proxy_udp_sender(0, (char *)&torext);
 		/*wait for circuit_extend_done*/
 		while(1) {
 			tormsg_t *re_check;
 			proxy_cir_reader(stage5buf);
+			//printf("..........here.........:%d\n", re_check->type);
 			/*check whether it is reply*/
 			re_check = (tormsg_t *)stage5buf;
 			//printf("Proxy: get tormsg back with type:%d\n",re_check->type);
-			if(re_check->type == 0x53) {
+			if(re_check->type == 83) {
+				printf("stage5:...%d...create circuit\n",i);
 				break;
 			} else {
 				printf("!!!!got message but not circuit-extend-done!!!\n");

@@ -34,7 +34,7 @@ int router_raw_sockfd=0;
 /*stage5*/
 //char rec_router_ip[MAXROUTER][20];
 char router_ip[20];
-router_store router_cir_info;
+uint16_t pre_port;
 /********/
 
 /***************read file functons*************/
@@ -431,7 +431,7 @@ int router_cir_reader(char *buffer) {
 		//printf("router: got packet from %s\n", src);
 		//printf("router: packet is %d bytes long\n", numbytes);
 		/**************stage5: get port number************/
-		router_cir_info.pre_port = get_port((struct sockaddr *)&their_addr);
+		pre_port = get_port((struct sockaddr *)&their_addr);
 		/*************************************************/
 		buffer[numbytes] = '\0';
 	}
@@ -853,7 +853,7 @@ int extend_msg_create(tormsg_t *extmsg, uint16_t cirid, uint16_t port) {
 	return 0;
 }
 /******************reply message create*********************/
-int reply_msg_create(tormsg_t *extmsg, uint16_t port) {
+int reply_msg_create(tormsg_t *extmsg, uint16_t cir_id) {
 	//char *local_ip = "127.0.0.1";
 
 	/*modify the ip struct*/
@@ -863,6 +863,7 @@ int reply_msg_create(tormsg_t *extmsg, uint16_t port) {
 	//extmsg->ip.ip_p = 253;
 	/*modify the payload*/
 	extmsg->type = 0x53;
-	extmsg->udp_port = port;
+	extmsg->circuit_id = cir_id;
+	//extmsg->udp_port = port;
 	return 0;
 }

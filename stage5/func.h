@@ -24,6 +24,8 @@ typedef struct{
 	uint16_t next_port;
 	uint16_t pre_port;
 }router_store;
+/*temp*/
+extern uint16_t pre_port;
 /*config*/
 extern int num_stage;
 extern int num_router;
