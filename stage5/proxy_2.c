@@ -48,6 +48,7 @@ int main(int argc, char *argv[])
 	fclose(fp);
 	printf("stage: %d\n",num_stage);
 	printf("router: %d\n",num_router);
+	printf("hop: %d\n", num_hop);
 	/******************/
 
 	/*create proxy*/
@@ -183,10 +184,11 @@ int main(int argc, char *argv[])
 								printf("router %d circuit info: in_circuit:%d, out_circuit:%d, next_port:%d, pre_port:%d\n", count+1, router_cir_info.in_circuit, router_cir_info.out_circuit, router_cir_info.next_port, router_cir_info.pre_port);
 								/*generate reply msg*/
 								reply_msg_create(router_tor, router_cir_info.in_circuit);
-								printf("stage5: router %d: now I can jump out of connection status\n",count+1);
+								//printf("stage5: router %d: now I can jump out of connection status\n",count+1);
 								/*send back to proxy*/
 								router_cir_sender((char *)routbuf, router_cir_info.pre_port);
 								/*jump out of connection statues*/
+								break;
 							} else {
 								/*I'm not the last hop*/
 								/*send to next hop existed*/
@@ -208,11 +210,13 @@ int main(int argc, char *argv[])
 							/*send back to previous*/
 							router_cir_sender((char *)routbuf, router_cir_info.pre_port);
 							/*jump out of connection status*/
-							printf("stage5:router %d: now I can jump out of connection status\n",count+1);
+							//printf("stage5:router %d: now I can jump out of connection status\n",count+1);
+							break;
 						}
 					}
 				}
 			}
+			printf("stage5: router %d: now I jump out of connection status\n",count+1);
 			/*****************************************/
 			/*for stage 2 of router*/
 			struct ip *ip;
@@ -291,23 +295,31 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	/***************stage 5 setup circuit******************/
-	/*create tor message*/
+	int all_router[num_router];
 	uint16_t circuit;
 	char stage5buf[MAXBUFLEN];
+	int m;
 	tormsg_t torext;
+	/*random pick routers*/
+	rand_hop(all_router);
+	for(m = 0; m < num_router; m++) {
+		printf("hop %d router %d\n", m+1, all_router[m]);
+	}
+	/*create tor message*/
 	/*calculate circuit*/
 	circuit = 1;
 	/***test field*****/
 	int i = 0;
 	/******************/
-	for(i=0;i<=2;i++) {
-		if(i != 2) {
-			extend_msg_create(&torext, circuit, rec_router_port[i+1]);
+	for(i=0; i < num_hop; i++) {
+		//printf("now i: %d, send to routeri: %d, next: %d\n", i, all_router[i], all_router[i+1]);
+		if(i != num_hop-1) {
+			extend_msg_create(&torext, circuit, rec_router_port[all_router[i+1]]);
 		} else {
 			extend_msg_create(&torext, circuit, 0xffff);
 		}
 		/*send to 1st OR*/
-		proxy_udp_sender(0, (char *)&torext);
+		proxy_udp_sender(all_router[0], (char *)&torext);
 		/*wait for circuit_extend_done*/
 		while(1) {
 			tormsg_t *re_check;

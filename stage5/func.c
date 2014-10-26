@@ -18,10 +18,12 @@
 #include <netinet/ip_icmp.h>
 #include "func.h"
 #include <inttypes.h>
+#include <time.h>
 
 int tun_fd = -1;
 int num_stage = 0;
 int num_router = 0;
+int num_hop = 0;
 int proxy_sockfd=0; 
 int proxy_port=0;
 int router_sockfd=0;
@@ -77,6 +79,22 @@ int router_line(char *sp) {
 		return -1;
 	}
 }
+/*return the num of hops*/
+int hop_line(char *sp) {
+	char *comm = "#";
+	char *hopnum = "minitor_hops";
+	char *startp;
+	if(strstr(sp,comm) != NULL) {
+		return 0;
+	} else {
+		if(strstr(sp, hopnum) != NULL) {
+			startp = strchr(sp,' ');
+			startp++;
+			return atoi(startp);
+		}
+		return -1;
+	}
+}
 /*read config*/
 int read_config(FILE *fp) {
 	char line[LINELEN];
@@ -84,23 +102,34 @@ int read_config(FILE *fp) {
 	if (fp == NULL) {
 		return -1;
 	}
-	while(fgets(line, sizeof(line), fp) != NULL &&(num_stage == 0 || num_router == 0)) {
+	while(fgets(line, sizeof(line), fp) != NULL &&(num_stage == 0 || num_router == 0 || num_hop == 0)) {
 		if (num_stage == 0) {
 			rv = stage_line(line);
 			if(rv > 0) {
 				num_stage = rv;
 			}
 			continue;
-		} else {
+		} else if(num_router == 0) {
 			/*num of routers*/
 			rv = router_line(line);
 			if(rv > 0) {
 				num_router = rv;
 			}
 			continue;
+		} else {
+			rv = hop_line(line);
+			if(rv > 0) {
+				if(rv <= num_router) {
+					num_hop = rv;
+				} else {
+					fprintf(stderr, "num of hops is bigger than num of routers\n");
+					exit(1);
+				}
+			}
+			continue;
 		}
 	}
-	if(num_stage == 0 || num_router == 0) {
+	if(num_stage == 0 || num_router == 0 || num_hop == 0) {
 		return -1;
 	}
 	//printf("stage %d\n", num_stage);
@@ -865,5 +894,27 @@ int reply_msg_create(tormsg_t *extmsg, uint16_t cir_id) {
 	extmsg->type = 0x53;
 	extmsg->circuit_id = cir_id;
 	//extmsg->udp_port = port;
+	return 0;
+}
+/*****************algorithm**********************************/
+int rand_hop(int *group) {
+	int i;
+	int pos_ary[num_router];
+	int temp;
+	/*initial array*/
+	for(i = 0; i < num_router; i++) {
+		group[i] = i;
+	}
+	/*create random pos*/
+	for(i = 0; i < num_router; i++) {
+		srand((unsigned)time(0));
+		pos_ary[i] = rand()%num_router;
+	}
+	/*swap pos*/
+	for(i = 0; i < num_router; i++) {
+		temp = group[i];
+		group[i] = group[pos_ary[i]];
+		group[pos_ary[i]] = temp;
+	}
 	return 0;
 }

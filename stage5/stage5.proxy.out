@@ -1,8 +1,0 @@
-stage1
-proxy port:51024
-router: 1, pid 5819, port: 56736, IP: 192.168.201.2
-
-router: 2, pid 5820, port: 40367, IP: 192.168.202.2
-
-router: 3, pid 5821, port: 57414, IP: 192.168.203.2
-

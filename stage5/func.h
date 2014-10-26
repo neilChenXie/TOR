@@ -29,6 +29,7 @@ extern uint16_t pre_port;
 /*config*/
 extern int num_stage;
 extern int num_router;
+extern int num_hop;
 /*count*/
 extern int count;//for router to know who they are
 /*router*/
@@ -75,3 +76,5 @@ int tunnel_write(char *buf);
 uint16_t ip_checksum(const void *buf, size_t hdr_len);
 int extend_msg_create(tormsg_t *extmsg, uint16_t cirid, uint16_t port);
 int reply_msg_create(tormsg_t *extmsg, uint16_t port);
+/*algorithm*/
+int rand_hop(int *group);
