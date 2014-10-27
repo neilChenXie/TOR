@@ -389,7 +389,7 @@ int proxy_cir_reader(char *buffer) {
 	addr_len = sizeof their_addr;
 	printf("stage5: proxy waiting for done message\n");
 
-	numbytes = recvfrom(proxy_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
+	numbytes = recvfrom(proxy_sockfd, buffer, 2*MAXBUFLEN, 0, (struct sockaddr *)&their_addr, &addr_len);
 	if(numbytes != -1) {
 		//printf("stage1: proxy: got packet from %s\n",
 		//		inet_ntop(their_addr.ss_family,
@@ -439,7 +439,7 @@ int router_udp_reader(char *buffer) {
 	}
 	return 0;
 }
-/*router UDP reader*/
+/*router cir reader*/
 int router_cir_reader(char *buffer) {
 	int numbytes;
 	struct sockaddr_storage their_addr;
@@ -452,7 +452,7 @@ int router_cir_reader(char *buffer) {
 	addr_len = sizeof their_addr;
 	//printf("router: router_socket:%d\n",router_sockfd);
 
-	numbytes = recvfrom(router_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
+	numbytes = recvfrom(router_sockfd, buffer, 2*MAXBUFLEN, 0, (struct sockaddr *)&their_addr, &addr_len);
 	
 	if(numbytes != -1) {
 		//inet_ntop(their_addr.ss_family,
@@ -483,7 +483,7 @@ int router_udp_sender(char *sendmsg) {
 	/*change int portnum to char*/
 	char proxyport[PORTLEN];
 	sprintf(proxyport,"%d",proxy_port);
-	printf("stage1: router: I will send to port: %s\n", proxyport);
+	printf("stage1: router %d: I will send to port: %s\n", count+1, proxyport);
 
 	/*set hints for getaddrinfo()*/
 	memset(&hints, 0, sizeof hints);
@@ -536,7 +536,7 @@ int router_udp_sender2(char *sendmsg) {
 	/*change int portnum to char*/
 	char proxyport[PORTLEN];
 	sprintf(proxyport,"%d",proxy_port);
-	printf("stage2: router: I will send to port: %s\n", proxyport);
+	printf("stage2: router %d: I will send to port: %s\n", count+1, proxyport);
 
 	/*set hints for getaddrinfo()*/
 	memset(&hints, 0, sizeof hints);
@@ -554,7 +554,7 @@ int router_udp_sender2(char *sendmsg) {
 		fprintf(stderr, "router:failed to bind socket\n");
 		return -1;
 	}
-	numbytesent = sendto(router_sockfd, sendmsg, MAXBUFLEN-1, 0, res->ai_addr, res->ai_addrlen);
+	numbytesent = sendto(router_sockfd, sendmsg, 2*MAXBUFLEN, 0, res->ai_addr, res->ai_addrlen);
 	if (numbytesent == -1) {
 		perror("router:sendto");
 		exit(1);
@@ -590,7 +590,7 @@ int router_cir_sender(char *sendmsg, uint16_t port) {
 		fprintf(stderr, "router:failed to bind socket\n");
 		return -1;
 	}
-	numbytesent = sendto(router_sockfd, sendmsg, MAXBUFLEN-1, 0, res->ai_addr, res->ai_addrlen);
+	numbytesent = sendto(router_sockfd, sendmsg, 2*MAXBUFLEN, 0, res->ai_addr, res->ai_addrlen);
 	if (numbytesent == -1) {
 		perror("router:sendto");
 		exit(1);
@@ -619,7 +619,7 @@ int router_raw_sender(char *buf,struct in_addr addr_dst) {
 	msg.msg_flags = 0;
 	/*sendmsg*/
 	rv = sendmsg(router_raw_sockfd, &msg, 0);
-	printf("stage3: router: send through raw socket:%d\n", rv);
+	printf("stage3: router %d: send through raw socket:%d\n", count+1, rv);
 	if(rv == -1) {
 		fprintf(stderr, "raw socket send failed\n");
 		return 2;
@@ -632,7 +632,7 @@ int router_raw_receiver(char *buf) {
 	struct sockaddr_storage their_addr;//for recvfrom
 	socklen_t addr_len;//for recvfrom
 
-	printf("stage3: router:waiting to recvfrom raw socket.....\n");
+	printf("stage3: router %d:waiting to recvfrom raw socket.....\n", count+1);
 
 	addr_len = sizeof their_addr;
 	
@@ -664,7 +664,7 @@ int router_select() {
 	}
 
 	/*router wait from eth1 or proxy*/
-	printf("stage3: router:wait for traffic\n");
+	printf("stage3: router %d:wait for traffic\n", count+1);
 	select(maxfd+1, &readfd, NULL, NULL, NULL);//never timeout
 	if(FD_ISSET(router_sockfd, &readfd)) {
 		return 2;
@@ -711,7 +711,7 @@ int proxy_udp_sender(int num, char *sendmsg) {
 	//}
 	/*send infomation*/
 	//numbytesent = sendto(sendsocket, sendmsg, MAXBUFLEN-1, 0, res->ai_addr, res->ai_addrlen);
-	numbytesent = sendto(proxy_sockfd, sendmsg, MAXBUFLEN-1, 0, res->ai_addr, res->ai_addrlen);
+	numbytesent = sendto(proxy_sockfd, sendmsg, 2*MAXBUFLEN, 0, res->ai_addr, res->ai_addrlen);
 	if (numbytesent == -1) {
 		perror("proxy:sendto");
 		exit(1);
@@ -896,6 +896,16 @@ int reply_msg_create(tormsg_t *extmsg, uint16_t cir_id) {
 	extmsg->circuit_id = cir_id;
 	//extmsg->udp_port = port;
 	return 0;
+}
+/*****************tor_msg_create****************************/
+int tor_msg_create(char *dstbuf, char* srcbuf) {
+	int i;
+	for(i = 0; i < MAXBUFLEN; i++) {
+		*dstbuf = *srcbuf;
+		dstbuf++;
+		srcbuf++;
+	}
+	return 0;	
 }
 /*****************algorithm**********************************/
 int rand_hop(int *group) {

@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
 			int pid = getpid();
 			char sendmsg[MAXMSGLEN];
 
-			printf("stage1: router:I,m child process: %d\n", pid);
+			printf("stage1: router %d:I,m child process: %d\n", count+1, pid);
 			
 
 			/*send pid to proxy*/
@@ -241,8 +241,10 @@ int main(int argc, char *argv[])
 				rv = router_select();
 				/*from proxy*/
 				if (rv == 2) {
-					char routbuf[MAXBUFLEN];
-					router_cir_reader(routbuf);//.......need change?no?.....
+					//char routbuf[MAXBUFLEN];
+					char stage5buf[2*MAXBUFLEN];
+					torrely_t *tor_relymsg;
+					router_cir_reader(stage5buf);//.......need change?no?.....
 					////	/*get info in ICMP*/
 					//ip = (struct ip*) routbuf;
 					//inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
@@ -264,10 +266,42 @@ int main(int argc, char *argv[])
 					///*******send to eth1**********/
 					///*only need to seed ICMP msg*/
 					//router_raw_sender((char *)icmp, ip->ip_dst);
+
+					/*stage5 deal with tor message*/
+					tor_relymsg = (torrely_t *)stage5buf;
+					printf("stage5: router %d: TOR message: type:%d, circuit_id:%d\n",count+1, tor_relymsg->type, tor_relymsg->circuit_id);
+					/*check whether the circuit id is the in_circuit*/
+					if(tor_relymsg->circuit_id == router_cir_info.in_circuit) { 
+						/*check the payload is right*/
+						ip = (struct ip *)(tor_relymsg->msg);
+						inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
+						inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
+						if(ip->ip_p != IPPROTO_ICMP) {
+							fprintf(stderr, "proxy: not ICMP msg from tunnel\n");
+							exit(1);
+						}
+						hlenl = ip->ip_hl << 2;
+						icmp = (struct icmp*)(tor_relymsg->msg+hlenl);
+						printf("stage5: router %d: ICMP from port:%d, src:%s, dst:%s, type:%d\n", count+1, pre_port, ipsrc, ipdst, icmp->icmp_type);
+						/******************/
+						/*check the outgoing port*/
+						if(router_cir_info.next_port != 0xffff) {
+							/*continue to rely*/
+							tor_relymsg->circuit_id = router_cir_info.out_circuit;
+							router_cir_sender(stage5buf, router_cir_info.next_port);
+						} else {
+							/*send out to the Internet*/
+							printf("router %d: time to send out of the Internet\n", count+1);
+							router_raw_sender((char *)icmp, ip->ip_dst);
+						}
+					} else {
+						/*log the unstored circuit id*/
+						/*complete this later*/
+					}
 				}
 				/*from eth1*/
 				if(rv == 3) {
-					printf("stage3: router: receive from eth1\n");
+					printf("stage3: router %d: receive from eth1\n", count+1);
 					/*read from eth1*/
 					char stage3buf[MAXBUFLEN];
 					router_raw_receiver(stage3buf);
@@ -353,7 +387,7 @@ int main(int argc, char *argv[])
 	int first_hop = all_router[0];
 	/******************************************************/
 	while(1) {
-		char stage2buf[MAXBUFLEN] = "";
+		char stage2buf[MAXBUFLEN];
 		int rv;
 		/*for ICMP msg*/
 		struct ip *ip;
@@ -365,54 +399,61 @@ int main(int argc, char *argv[])
 		rv = tunnel_reader(stage2buf);
 		printf("stage5: proxy: rv:%d\n",rv);
 		if (rv == 2) {
-	//		//from router
-	//		/*get ICMP msg*/
-	//		ip = (struct ip*) stage2buf;
-	//		inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
-	//		inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
-	//		if(ip->ip_p != IPPROTO_ICMP) {
-	//			fprintf(stderr, "proxy: not ICMP msg from tunne\n");
-	//			exit(1);
-	//		}
-	//		hlenl = ip->ip_hl << 2;
-	//		icmp = (struct icmp*)(stage2buf+hlenl);
-	//		sprintf(recline,"ICMP from port:%d, src:%s, dst:%s, type:%d\n", rec_router_port[0], ipsrc, ipdst, icmp->icmp_type);
-	//		/*send to tunnel*/
-	//		//printf("proxy: send ICMP ECHO reply to tunnel\n");
-	//		if(tunnel_write(stage2buf) != 0) {
-	//			fprintf(stderr, "proxy:cannot write to tunnel");
-	//			exit(1);
-	//		}
+			//from router
+			/*get ICMP msg*/
+			ip = (struct ip*) stage2buf;
+			inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
+			inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
+			if(ip->ip_p != IPPROTO_ICMP) {
+				fprintf(stderr, "proxy: not ICMP msg from tunne\n");
+				exit(1);
+			}
+			hlenl = ip->ip_hl << 2;
+			icmp = (struct icmp*)(stage2buf+hlenl);
+			sprintf(recline,"ICMP from port:%d, src:%s, dst:%s, type:%d\n", rec_router_port[0], ipsrc, ipdst, icmp->icmp_type);
+			/*send to tunnel*/
+			//printf("proxy: send ICMP ECHO reply to tunnel\n");
+			if(tunnel_write(stage2buf) != 0) {
+				fprintf(stderr, "proxy:cannot write to tunnel");
+				exit(1);
+			}
 		}
 		if (rv == 3) {
-	//		//from tunnel
-	//		int to_send = 0;
-	//		/*get ICMP msg*/
-	//		ip = (struct ip*) stage2buf;
-	//		inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
-	//		inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
-	//		if(ip->ip_p != IPPROTO_ICMP) {
-	//			fprintf(stderr, "proxy: not ICMP msg from tunne\n");
-	//			exit(1);
-	//		}
-	//		hlenl = ip->ip_hl << 2;
-	//		icmp = (struct icmp*)(stage2buf+hlenl);
-	//		//sprintf(recline,"ICMP from tunnel, src:%s, dst:%s, type:%d\n", ipsrc, ipdst,icmp->icmp_type);
-	//		/*send to router*/
-	//		//printf("proxy: send to router with port: %d\n", rec_router_port[0]);
-	//		to_send = ntohl(ip->ip_dst.s_addr)%num_router;
-	//		printf("stage4: which router to send:%d\n",to_send);
-	//		if(proxy_udp_sender(to_send, stage2buf) != 0) {
-	//			fprintf(stderr, "proxy:cannot send ICMP to router");
-	//			exit(1);
-	//		}
-	//		sprintf(recline,"ICMP from tunnel, src:%s, dst:%s, type:%d\n", ipsrc, ipdst,icmp->icmp_type);
-	//	}
+			//from tunnel
+			//int to_send = 0;
+			/*get ICMP msg*/
+			ip = (struct ip*) stage2buf;
+			inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
+			inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
+			if(ip->ip_p != IPPROTO_ICMP) {
+				fprintf(stderr, "proxy: not ICMP msg from tunne\n");
+				exit(1);
+			}
+			hlenl = ip->ip_hl << 2;
+			icmp = (struct icmp*)(stage2buf+hlenl);
+			//sprintf(recline,"ICMP from tunnel, src:%s, dst:%s, type:%d\n", ipsrc, ipdst,icmp->icmp_type);
+			printf("ICMP from tunnel, src:%s, dst:%s, type:%d\n", ipsrc, ipdst,icmp->icmp_type);
+			/*********stage5**********/
+			/*create tor rely message*/
+			torrely_t proxy_tor_msg;
+			proxy_tor_msg.type = 0x51;
+			proxy_tor_msg.circuit_id = circuit;
+			tor_msg_create(proxy_tor_msg.msg, stage2buf);
+			/*************************/
+			/*send message to router*/
+			//to_send = ntohl(ip->ip_dst.s_addr)%num_router;
+			printf("stage5: which router to send:%d\n",first_hop);
+			if(proxy_udp_sender(first_hop, (char *)&proxy_tor_msg) != 0) {
+				fprintf(stderr, "proxy:cannot send ICMP to router");
+				exit(1);
+			}
+			sprintf(recline,"ICMP from tunnel, src:%s, dst:%s, type:%d\n", ipsrc, ipdst,icmp->icmp_type);
+		}
 	//	//printf("writein:%s\n",recline);
 	//	sprintf(filename, "stage%d.proxy.out", num_stage);
-	//	if(write_file(filename, recline) != 0) {
-	//		fprintf(stderr, "proxy: cannot write to file");
-	//		exit(1);
+		if(write_file(filename, recline) != 0) {
+			fprintf(stderr, "proxy: cannot write to file");
+			exit(1);
 		}
 	}
 	/**********************/

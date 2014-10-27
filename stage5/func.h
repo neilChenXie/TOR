@@ -81,5 +81,6 @@ int tunnel_write(char *buf);
 uint16_t ip_checksum(const void *buf, size_t hdr_len);
 int extend_msg_create(tormsg_t *extmsg, uint16_t cirid, uint16_t port);
 int reply_msg_create(tormsg_t *extmsg, uint16_t port);
+int tor_msg_create(char *srcbuf, char *dstbuf);
 /*algorithm*/
 int rand_hop(int *group);
