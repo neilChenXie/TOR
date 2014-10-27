@@ -1,0 +1,5 @@
+stage3
+proxy port:34278
+router: 1, pid 8486, port: 41044
+ICMP from tunnel, src:10.0.2.15, dst:128.30.2.155, type:8
+ICMP from port:41044, src:128.30.2.155, dst:10.0.2.15, type:0

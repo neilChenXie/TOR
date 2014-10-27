@@ -803,9 +803,10 @@ int tunnel_reader(char *buffer)
 
 	if(FD_ISSET(proxy_sockfd, &readfd)) {
 		/*read from udp socket*/
-		nread = recvfrom(proxy_sockfd, buffer, MAXBUFLEN-1, 0, (struct sockaddr *)&their_addr, &addr_len);
+		nread = recvfrom(proxy_sockfd, buffer, 2*MAXBUFLEN, 0, (struct sockaddr *)&their_addr, &addr_len);
 
 		if(nread != -1) {
+			pre_port = get_port((struct sockaddr *)&their_addr);
 			buffer[nread] = '\0';
 			//printf("stage2: proxy: got packet from %s\n",
 			//		inet_ntop(their_addr.ss_family,
