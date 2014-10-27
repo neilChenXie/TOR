@@ -908,6 +908,16 @@ int tor_msg_create(char *dstbuf, char* srcbuf) {
 	}
 	return 0;	
 }
+/*content_msg*/
+int content_msg(uint8_t *dstmsg, char *srcmsg) {
+	int i;
+	for(i = 0; i < MAXBUFLEN; i++) {
+		*dstmsg = *srcmsg & 0xff;
+		dstmsg++;
+		srcmsg++;
+	}
+	return 0;
+}
 /*****************algorithm**********************************/
 int rand_hop(int *group) {
 	int i;
