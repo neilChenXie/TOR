@@ -1,4 +1,10 @@
 #include <inttypes.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <openssl/aes.h>
+#include <limits.h>
+#include <assert.h>
 #define Eth0_IP "10.0.2.15"
 #define Eth1_IP "192.168.201.2"
 #define Eth2_IP "192.168.202.2"
@@ -12,6 +18,8 @@
 #define MAXROUTER 10
 #define MAXMSGLEN 100
 /*stage 6 AES key*/
+extern const int AES_KEY_LENGTH_IN_BITS;
+extern const int AES_KEY_LENGTH_IN_CHARS;
 typedef struct{
 	uint8_t key[16];
 }aes_key_t;
@@ -99,3 +107,8 @@ int port_copyin(uint16_t *dst, unsigned char *src);
 int port_copyout(unsigned char *dst, uint16_t *src);
 int key_store(unsigned char *dst, unsigned char *src, int msg_len);
 int get_eny_msg(uint8_t *dstbuf, unsigned char *srcbuf, int msg_len);
+/*aes encrypt*/
+void class_AES_set_encrypt_key(unsigned char *key_text, AES_KEY *enc_key);
+void class_AES_set_decrypt_key(unsigned char *key_text, AES_KEY *dec_key);
+void class_AES_encrypt_with_padding(unsigned char *in, int len, unsigned char **out, int *out_len, AES_KEY *enc_key);
+void class_AES_decrypt_with_padding(unsigned char *in, int len, unsigned char **out, int *out_len, AES_KEY *dec_key);

@@ -1,0 +1,7 @@
+router: 3, pid: 1994, port: 41913, IP: 192.168.203.2
+
+pkt from port: 52679, length: ?, contents: 0x610101
+pkt from port: 52679, length: ?, contents: 0x620101
+pkt from port: 52679, length: ?, contents: 0x610101
+pkt from port: 52679, length: ?, contents: 0x620101
+pkt from port: 34036, length: ?, contents: 0x630301

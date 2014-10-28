@@ -557,6 +557,38 @@ int main(int argc, char *argv[])
 			sprintf(recline, "\n");
 			write_file(filename, recline);
 		}
+		/*********************aes test field***************************/
+		/*set keys*/
+		unsigned char *key_text = (unsigned char *)"password1234568";  /* NOT a good password :-) */
+		unsigned char key_data[AES_KEY_LENGTH_IN_CHARS];
+		unsigned char *clear_text = (unsigned char *)"Four score and seven years ago our fathers brought forth on this continent a new nation, conceived in liberty, and dedicated to the proposition that all men are created eq";
+		int clear_text_len = strlen((char *)clear_text) + 1; /* add one for null termination */
+
+		unsigned char *crypt_text;
+		int crypt_text_len;
+		unsigned char *clear_crypt_text;
+		int clear_crypt_text_len;
+
+		AES_KEY enc_key;
+		//AES_KEY dec_key;
+
+		memset(key_data, 0, 16);
+		strncpy((char *)key_data, (char*)key_text, 16);
+		/* Now key_data is the 128-bit binary value that AES will use as a key. */
+
+		/* test out encryption */
+		class_AES_set_encrypt_key(key_data, &enc_key);
+		class_AES_encrypt_with_padding(clear_text, clear_text_len, &crypt_text, &crypt_text_len, &enc_key);
+		printf("%s\n", crypt_text);
+
+		class_AES_set_decrypt_key(key_data, &enc_key);
+		class_AES_decrypt_with_padding(crypt_text, crypt_text_len, &clear_crypt_text, &clear_crypt_text_len, &enc_key);
+		printf("%s\n", clear_crypt_text);
+
+		/* caller must free the buffers */
+		free(crypt_text);
+		free(clear_crypt_text);
+		/**********************end of test*****************************/
 	}
 	if(num_stage == 6) {
 	char stage6buf[2*MAXBUFLEN];
