@@ -1,7 +1,7 @@
 #this line is comment
 
-stage 6
+stage 5
 
 num_routers 3
 
-minitor_hops 3
+minitor_hops 1
