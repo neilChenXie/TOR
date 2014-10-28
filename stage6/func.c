@@ -924,6 +924,47 @@ int content_msg(uint8_t *dstmsg, char *srcmsg) {
 }
 /**************************************************************************/
 
+/*****************************stage 6**************************************/
+int ency_msg_copyin(char *dst, unsigned char *src, int msg_len) {
+	int i;
+	for(i = 0; i < msg_len; i++) {
+		*(dst + i) = *(src + i) & 0xff;
+	}
+	return 0;
+}
+int ency_msg_copyout(unsigned char *dst, char *src, int msg_len) {
+	int i;
+	for(i = 0; i < msg_len; i++) {
+		*(dst + i) = *(src + i) & 0xff;
+	}
+	return 0;
+}
+int port_copyin(uint16_t *dst, unsigned char *src) {
+	memcpy(dst, src, 2);
+	return 0;
+}
+int port_copyout(unsigned char *dst, uint16_t *src) {
+	memcpy(dst, src, 2);
+	return 0;
+}
+int key_store(unsigned char *dst, unsigned char *src, int msg_len) {
+	int i;
+	for(i = 0; i < msg_len; i++) {
+		*(dst + i) = *(src + i) & 0xff;
+	}
+	return 0;
+}
+int get_eny_msg(uint8_t *dstbuf, unsigned char *srcbuf, int msg_len) {
+	int i;
+	for(i = 0; i < msg_len; i++) {
+		*(dstbuf+i) = *(srcbuf+i) & 0xff;
+		//dstbuf++;
+		//srcbuf++;
+	}
+	return 0;
+}
+/**************************************************************************/
+
 /*******************************algorithm**********************************/
 /****get random hop order*****/
 int rand_hop(int *group) {

@@ -11,6 +11,10 @@
 #define FNAMELEN 20
 #define MAXROUTER 10
 #define MAXMSGLEN 100
+/*stage 6 AES key*/
+typedef struct{
+	uint8_t key[16];
+}aes_key_t;
 /*stage5 payload*/
 typedef struct{
 	struct ip ip;
@@ -21,18 +25,16 @@ typedef struct{
 typedef struct{
 	uint8_t type;
 	uint16_t circuit_id;
-	char msg[100];
+	int msg_len;
+	char msg[MAXBUFLEN];
 }torrely_t;
 typedef struct{
 	uint16_t in_circuit;
 	uint16_t out_circuit;
 	uint16_t next_port;
 	uint16_t pre_port;
+	unsigned char my_key[16];
 }router_store;
-/*stage 6 AES key*/
-typedef struct{
-	uint8_t key[16];
-}aes_key_t;
 /*temp*/
 extern uint16_t pre_port;
 /*config*/
@@ -90,3 +92,10 @@ int content_msg(uint8_t *dstmsg, char *srcmsg);
 /*algorithm*/
 int rand_hop(int *group);
 int create_aes_key(aes_key_t *aeskey);
+/*stage 6*/
+int ency_msg_copyin(char *dst, unsigned char *src, int msg_len);
+int ency_msg_copyout(unsigned char *dst, char *src, int msg_len);
+int port_copyin(uint16_t *dst, unsigned char *src);
+int port_copyout(unsigned char *dst, uint16_t *src);
+int key_store(unsigned char *dst, unsigned char *src, int msg_len);
+int get_eny_msg(uint8_t *dstbuf, unsigned char *srcbuf, int msg_len);

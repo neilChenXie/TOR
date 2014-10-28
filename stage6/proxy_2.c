@@ -138,11 +138,12 @@ int main(int argc, char *argv[])
 			int rv;
 			/*initial router circuit form*/
 			memset(&router_cir_info, 0, sizeof router_cir_info);
+			/*start circuit setup*/
 			while(1) {
 				rv = 0;
 				rv = router_select();
 				if (rv == 2) {
-					char routbuf[MAXBUFLEN];
+					char routbuf[2*MAXBUFLEN];
 					router_cir_reader(routbuf);
 					uint8_t type;
 					/*only for stage 5 use*/
@@ -260,153 +261,256 @@ int main(int argc, char *argv[])
 					/****************only for stage 6*********************/
 					/**********0x61*********/
 					if(type == 0x61) {
+						printf("stage6: router %d: !!!I got type 0x61 msg\n", count+1);
+						int msg_len;
+						uint16_t cir_id;
+
+						cir_id = ency_router_tor->circuit_id;//....cir_id
+						msg_len = ency_router_tor->msg_len;//........len
+						/*copy msg*/
+						unsigned char ency_msg[msg_len];
+						ency_msg_copyout(ency_msg, ency_router_tor->msg, msg_len);//..........msg
+
+						/*verify the msg*/
+						//uint8_t eny_msg_check[msg_len];
+						//int i;
+
+						//get_eny_msg(eny_msg_check, ency_msg, msg_len);
+						//printf("stage6: router %d: I got msg: ", count+1);
+						//for(i = 0; i < msg_len; i++) {
+					//	printf("%02X",eny_msg_check[i]);
+						//}
+						//printf("\n");
+						/*check the out_circuit and next_port*/
+						if(router_cir_info.next_port == 0) {
+							/*key is for me*/
+							/*check the msg is 128bit(16Bytes)*/
+							if(msg_len == 16) {
+								/*store the key*/
+								key_store(router_cir_info.my_key, ency_msg, 16);
+								/*store the pre port*/
+								router_cir_info.pre_port = pre_port;
+								/*store the in_come circuit*/
+								router_cir_info.in_circuit = cir_id;
+							} else {
+								/*error case*/
+								printf("stage6: router %d: why the key is for me, msg_len:%d\n", count+1, msg_len);
+							}
+						} else {
+							/*key is for next*/
+							/*decryption the msg*/
+							unsigned char *my_decyp_msg;
+							int new_msg_len;
+
+							my_decyp_msg = ency_msg;
+							new_msg_len = 16;
+							/*modify the packet*/
+							ency_msg_copyin(ency_router_tor->msg, my_decyp_msg, new_msg_len);//.....msg
+							ency_router_tor->circuit_id = router_cir_info.out_circuit;//.......circuit id
+							ency_router_tor->msg_len = new_msg_len;//..........................msg_len
+							//type not change
+							/*send out*/
+							router_cir_sender((char *)routbuf, router_cir_info.next_port);
+						}
 					}
 					/**********0x62*********/
 					if(type == 0x62) {
+						printf("stage6: router %d: !!!I got type 0x62 msg\n", count+1);
+						int msg_len;
+						msg_len = ency_router_tor->msg_len;//........len
+
+						/*copy msg*/
+						unsigned char ency_msg[msg_len];
+						ency_msg_copyout(ency_msg, ency_router_tor->msg, msg_len);//..........msg
+						/*decrypt the msg*/
+						unsigned char *my_decyp_msg;
+						int new_msg_len;
+
+						my_decyp_msg = ency_msg;//not encrypt now
+						new_msg_len = 2;
+
+						/*judge the msg is for who*/
+						if(router_cir_info.next_port == 0) {
+							/*the circuit setup msg is for me*/
+							if(new_msg_len == 2) {
+								/*store the port num*/
+								port_copyin(&router_cir_info.next_port, my_decyp_msg);
+								/*calculate next cir_id*/
+								uint16_t new_cir_id;
+								new_cir_id = 256*(count+1) + 1;
+								router_cir_info.out_circuit = new_cir_id;
+
+								/*0x63 msg to proxy by modifying*/
+								ency_router_tor->type = 0x63;//....type
+								ency_router_tor->circuit_id = router_cir_info.in_circuit;//....cir_id
+								ency_router_tor->msg_len = 0;//....msg_lem
+								memset(ency_router_tor->msg,0,MAXBUFLEN);//......no msg
+								/*send 0x63 to pre_port*/
+								router_cir_sender((char *)routbuf, router_cir_info.pre_port);
+							} else {
+								printf("stage6: router %d: why port msg is for me? msg_len:%d\n", count+1, new_msg_len);
+							}
+						} else {
+							/*the circuit setup msg is for next*/
+							ency_msg_copyin(ency_router_tor->msg, my_decyp_msg, new_msg_len);//.....msg
+							ency_router_tor->circuit_id = router_cir_info.out_circuit;//.......circuit id
+							ency_router_tor->msg_len = new_msg_len;//..........................msg_len
+							//type not change
+
+							/*send out*/
+							router_cir_sender((char *)routbuf, router_cir_info.next_port);
+						}
 					}
 					/**********0x63*********/
 					if(type == 0x63) {
+						printf("stage6: router %d: !!!I got type 0x63 msg\n", count+1);
+
+						/*just send back*/
+						ency_router_tor->circuit_id = router_cir_info.in_circuit;//.......circuit_id
+						router_cir_sender((char *)routbuf, router_cir_info.pre_port);
 					}
 					/***************end of stage 6 router*****************/
 				}
 			}
 			/******************only for stage 5: msg trans****************/
-			printf("stage5: router %d: now I jump out of connection status\n",count+1);
-			/*for stage 2 of router*/
-			struct ip *ip;
-			int hlenl;
-			struct icmp *icmp;
-			char ipdst[20];
-			char ipsrc[20];
-			/**********************/
+			if (num_stage == 5) {
+				printf("stage5: router %d: now I jump out of connection status\n",count+1);
+				/*for stage 2 of router*/
+				struct ip *ip;
+				int hlenl;
+				struct icmp *icmp;
+				char ipdst[20];
+				char ipsrc[20];
+				/**********************/
 			while(1) {
-				/*wait ICMP msg from proxy*/
-				/*use accept instead*/
-				rv = 0;
-				rv = router_select();
-				if (rv == 2) {
-					/*from proxy*/
-					//char routbuf[MAXBUFLEN];
-					char stage5buf[2*MAXBUFLEN];
-					torrely_t *tor_relymsg;
-					router_cir_reader(stage5buf);//.......need change?no?.....
-					/*******************stage 2*********************/
-					////	/*get info in ICMP*/
-					//ip = (struct ip*) routbuf;
-					//inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
-					//inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
-					//if(ip->ip_p != IPPROTO_ICMP) {
-					//	fprintf(stderr, "proxy: not ICMP msg from tunne\n");
-					//	exit(1);
-					//}
-					//hlenl = ip->ip_hl << 2;
-					//icmp = (struct icmp*)(routbuf+hlenl);
-					///*write to file*/
-					//sprintf(recline, "ICMP from port:%d, src:%s, dst:%s, type:%d\n", proxy_port, ipsrc, ipdst, icmp->icmp_type);
-					//write_file(filename, recline);
-					/////*write a reply to proxy*/
-					////icmp->icmp_type = 0;
-					////inet_pton(AF_INET, ipdst,(void *)&ip->ip_src);
-					////inet_pton(AF_INET, ipsrc,(void *)&ip->ip_dst);
-					////router_udp_sender2(routbuf);
-					///*******send to eth1**********/
-					///*only need to seed ICMP msg*/
-					//router_raw_sender((char *)icmp, ip->ip_dst);
-					/********************************************/
+					/*wait ICMP msg from proxy*/
+					/*use accept instead*/
+					rv = 0;
+					rv = router_select();
+					if (rv == 2) {
+						/*from proxy*/
+						//char routbuf[MAXBUFLEN];
+						char stage5buf[2*MAXBUFLEN];
+						torrely_t *tor_relymsg;
+						router_cir_reader(stage5buf);//.......need change?no?.....
+						/*******************stage 2*********************/
+						////	/*get info in ICMP*/
+						//ip = (struct ip*) routbuf;
+						//inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
+						//inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
+						//if(ip->ip_p != IPPROTO_ICMP) {
+						//	fprintf(stderr, "proxy: not ICMP msg from tunne\n");
+						//	exit(1);
+						//}
+						//hlenl = ip->ip_hl << 2;
+						//icmp = (struct icmp*)(routbuf+hlenl);
+						///*write to file*/
+						//sprintf(recline, "ICMP from port:%d, src:%s, dst:%s, type:%d\n", proxy_port, ipsrc, ipdst, icmp->icmp_type);
+						//write_file(filename, recline);
+						/////*write a reply to proxy*/
+						////icmp->icmp_type = 0;
+						////inet_pton(AF_INET, ipdst,(void *)&ip->ip_src);
+						////inet_pton(AF_INET, ipsrc,(void *)&ip->ip_dst);
+						////router_udp_sender2(routbuf);
+						///*******send to eth1**********/
+						///*only need to seed ICMP msg*/
+						//router_raw_sender((char *)icmp, ip->ip_dst);
+						/********************************************/
 
-					/**********router stage5 deal with tor message**********/
-					tor_relymsg = (torrely_t *)stage5buf;
-					printf("stage5: router %d: TOR message: type:%d, circuit_id:%d\n",count+1, tor_relymsg->type, tor_relymsg->circuit_id);
-					/*record the packet to log file*/
-					uint8_t out_msg[MAXBUFLEN];
-					content_msg(out_msg, stage5buf);
-					int ii;
-					sprintf(filename, "stage%d.router%d.out", num_stage,count+1);
-					sprintf(recline, "pkt from port: %d, length: 87, content\n0x",pre_port);
-					write_file(filename, recline);
-					for(ii = 0; ii < 87; ii++) {
-						sprintf(recline, "%02X", out_msg[ii]);
+						/**********router stage5 deal with tor message**********/
+						tor_relymsg = (torrely_t *)stage5buf;
+						printf("stage5: router %d: TOR message: type:%d, circuit_id:%d\n",count+1, tor_relymsg->type, tor_relymsg->circuit_id);
+						/*record the packet to log file*/
+						uint8_t out_msg[MAXBUFLEN];
+						content_msg(out_msg, stage5buf);
+						int ii;
+						sprintf(filename, "stage%d.router%d.out", num_stage,count+1);
+						sprintf(recline, "pkt from port: %d, length: 87, content\n0x",pre_port);
 						write_file(filename, recline);
-					}
-					/*******************************/
-					/*check type first*/
-					if(tor_relymsg->type == 0x51) {
-						/*check whether the circuit id is the in_circuit*/
-						if(tor_relymsg->circuit_id == router_cir_info.in_circuit) { 
-							/*check the payload is right*/
-							ip = (struct ip *)(tor_relymsg->msg);
-							inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
-							inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
-							if(ip->ip_p != IPPROTO_ICMP) {
-								fprintf(stderr, "proxy: not ICMP msg from tunnel\n");
-								exit(1);
-							}
-							hlenl = ip->ip_hl << 2;
-							icmp = (struct icmp*)(tor_relymsg->msg+hlenl);
-							printf("stage5: router %d: ICMP from port:%d, src:%s, dst:%s, type:%d\n", count+1, pre_port, ipsrc, ipdst, icmp->icmp_type);
-							/******************/
-							/*check the outgoing port*/
-							if(router_cir_info.next_port != 0xffff) {
-								/*continue to rely*/
-								tor_relymsg->circuit_id = router_cir_info.out_circuit;
-								router_cir_sender(stage5buf, router_cir_info.next_port);
-								sprintf(recline,"\n");
-								write_file(filename, recline);
+						for(ii = 0; ii < 87; ii++) {
+							sprintf(recline, "%02X", out_msg[ii]);
+							write_file(filename, recline);
+						}
+						/*******************************/
+						/*check type first*/
+						if(tor_relymsg->type == 0x51) {
+							/*check whether the circuit id is the in_circuit*/
+							if(tor_relymsg->circuit_id == router_cir_info.in_circuit) { 
+								/*check the payload is right*/
+								ip = (struct ip *)(tor_relymsg->msg);
+								inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
+								inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
+								if(ip->ip_p != IPPROTO_ICMP) {
+									fprintf(stderr, "proxy: not ICMP msg from tunnel\n");
+									exit(1);
+								}
+								hlenl = ip->ip_hl << 2;
+								icmp = (struct icmp*)(tor_relymsg->msg+hlenl);
+								printf("stage5: router %d: ICMP from port:%d, src:%s, dst:%s, type:%d\n", count+1, pre_port, ipsrc, ipdst, icmp->icmp_type);
+								/******************/
+								/*check the outgoing port*/
+								if(router_cir_info.next_port != 0xffff) {
+									/*continue to rely*/
+									tor_relymsg->circuit_id = router_cir_info.out_circuit;
+									router_cir_sender(stage5buf, router_cir_info.next_port);
+									sprintf(recline,"\n");
+									write_file(filename, recline);
+								} else {
+									/*send out to the Internet*/
+									printf("router %d: time to send out of the Internet\n", count+1);
+									router_raw_sender((char *)icmp, ip->ip_dst);
+									sprintf(recline, "\noutgoing packet, circuit incoming: %d,incoming src:%s, outgoing src:%s, dst:%s\n", router_cir_info.out_circuit, ipsrc, router_ip, ipdst);
+									write_file(filename, recline);
+								}
 							} else {
-								/*send out to the Internet*/
-								printf("router %d: time to send out of the Internet\n", count+1);
-								router_raw_sender((char *)icmp, ip->ip_dst);
-								sprintf(recline, "\noutgoing packet, circuit incoming: %d,incoming src:%s, outgoing src:%s, dst:%s\n", router_cir_info.out_circuit, ipsrc, router_ip, ipdst);
-								write_file(filename, recline);
+								/*log the unstored circuit id*/
+								/*complete this later*/
 							}
-						} else {
-							/*log the unstored circuit id*/
-							/*complete this later*/
+						}
+						if(tor_relymsg->type == 0x54) {	
+							/*continue to send back*/
+							tor_relymsg->circuit_id = router_cir_info.in_circuit;
+							router_cir_sender(stage5buf, router_cir_info.pre_port);
+							sprintf(recline,"\n");
+							write_file(filename, recline);
 						}
 					}
-					if(tor_relymsg->type == 0x54) {	
-						/*continue to send back*/
-						tor_relymsg->circuit_id = router_cir_info.in_circuit;
-						router_cir_sender(stage5buf, router_cir_info.pre_port);
-						sprintf(recline,"\n");
+					if(rv == 3) {
+						/*from eth1*/
+						printf("stage3: router %d: receive from eth1\n", count+1);
+						/*read from eth1*/
+						char stage3buf[MAXBUFLEN];
+						router_raw_receiver(stage3buf);
+						/*analyse the packet*/
+						ip = (struct ip*) stage3buf;
+						inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
+						inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
+						if(ip->ip_p != IPPROTO_ICMP) {
+							fprintf(stderr, "proxy: not ICMP msg from eth1\n");
+							exit(1);
+						}
+						hlenl = ip->ip_hl << 2;
+						icmp = (struct icmp*)(stage3buf+hlenl);
+						/*revise ip header*/
+						/*write to file*/
+						sprintf(recline, "ICMP from raw socket, src:%s, dst:%s, type:%d\n", ipsrc, ipdst, icmp->icmp_type);
 						write_file(filename, recline);
+						inet_pton(AF_INET, Eth0_IP, (void *)&ip->ip_dst);
+						memset((void *)&ip->ip_sum, 0, sizeof(ip->ip_sum));
+						ip->ip_sum = ip_checksum((const void *)ip, hlenl);
+						/*send to proxy*/
+						//router_udp_sender2(stage3buf);
+						/******************stage5**********************/
+						/*send back to circuit*/
+						/*create router_tor_msg*/
+						torrely_t router_tor_msg;
+						router_tor_msg.type = 0x54;
+						router_tor_msg.circuit_id = router_cir_info.in_circuit;
+						tor_msg_create(router_tor_msg.msg, stage3buf);
+						/*send to circuit*/
+						router_cir_sender((char *)&router_tor_msg, router_cir_info.pre_port);
+						/***********************************************/
 					}
-				}
-				if(rv == 3) {
-					/*from eth1*/
-					printf("stage3: router %d: receive from eth1\n", count+1);
-					/*read from eth1*/
-					char stage3buf[MAXBUFLEN];
-					router_raw_receiver(stage3buf);
-					/*analyse the packet*/
-					ip = (struct ip*) stage3buf;
-					inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
-					inet_ntop(AF_INET,(void*)&ip->ip_dst,ipdst,16);
-					if(ip->ip_p != IPPROTO_ICMP) {
-						fprintf(stderr, "proxy: not ICMP msg from eth1\n");
-						exit(1);
-					}
-					hlenl = ip->ip_hl << 2;
-					icmp = (struct icmp*)(stage3buf+hlenl);
-					/*revise ip header*/
-					/*write to file*/
-					sprintf(recline, "ICMP from raw socket, src:%s, dst:%s, type:%d\n", ipsrc, ipdst, icmp->icmp_type);
-					write_file(filename, recline);
-					inet_pton(AF_INET, Eth0_IP, (void *)&ip->ip_dst);
-					memset((void *)&ip->ip_sum, 0, sizeof(ip->ip_sum));
-					ip->ip_sum = ip_checksum((const void *)ip, hlenl);
-					/*send to proxy*/
-					//router_udp_sender2(stage3buf);
-					/******************stage5**********************/
-					/*send back to circuit*/
-					/*create router_tor_msg*/
-					torrely_t router_tor_msg;
-					router_tor_msg.type = 0x54;
-					router_tor_msg.circuit_id = router_cir_info.in_circuit;
-					tor_msg_create(router_tor_msg.msg, stage3buf);
-					/*send to circuit*/
-					router_cir_sender((char *)&router_tor_msg, router_cir_info.pre_port);
-					/***********************************************/
 				}
 			}
 			/********************end of stage 5 msg trans******************/
@@ -421,7 +525,6 @@ int main(int argc, char *argv[])
 	}
 	int all_router[num_router];
 	uint16_t circuit;
-	char stage5buf[MAXBUFLEN];
 	int m;
 
 	/*stage 5 & stage 6 start srand()*/
@@ -436,8 +539,8 @@ int main(int argc, char *argv[])
 	circuit = 1;
 	/*************************only for stage 6****************************/
 	/******************stage 6 create AES key****************/
+	aes_key_t talk_key[num_hop];
 	if(num_stage == 6) {
-		aes_key_t talk_key[num_hop];
 		int z;
 		for(z = 0; z < num_hop; z++) {
 			/*create key*/
@@ -456,22 +559,112 @@ int main(int argc, char *argv[])
 		}
 	}
 	if(num_stage == 6) {
+	char stage6buf[2*MAXBUFLEN];
 	/*************stage 6 setup circuit**********/
 		torrely_t eny_tor_msg;
+
+		/*set circuit id*/
+		eny_tor_msg.circuit_id = circuit;//............circuit_id
 		int i;
-		for(i = 0; i < num_hop; i++) {
+		for(i = 0; i < num_hop; i++) { //i : # of hop
+			/*******set type 0x61********/
+			eny_tor_msg.type = 0x61;//.....................type
+			/****send key to new hop*****/
+			int n;
+
+			/*encrypte symmetric key*/
+			/*test key*/
+			unsigned char *test_key = (unsigned char*)"onlyfortestuse!";
+			unsigned char *eny_key;//this will be malloc mem
+
+			eny_key = test_key;
+
+			/*encrypt the key: key_key*/
+			for(n = 0;n < i; n++) { //n: # of hop to pass
+				eny_key = test_key;
+			}
+			eny_tor_msg.msg_len = 16;//.................msg_lem
+			/*print and check the key*/
+			//uint8_t che_key[eny_tor_msg.msg_len];
+			//get_eny_msg(che_key, eny_key, eny_tor_msg.msg_len);
+			//int l;
+			//printf("stage6: proxy: eny_msg: ");
+			//for (l = 0; l < 16; l++) {
+			//	printf("%02X",che_key[l]);
+			//}
+			//printf("\n");
+
+			/*create key_send msg*/
+			ency_msg_copyin(eny_tor_msg.msg, eny_key, eny_tor_msg.msg_len);//.......................................................msg
+
+			/*send key*/
+			proxy_udp_sender(all_router[0], (char *)&eny_tor_msg);
+
+			/*****after set the session key******/
+			/*set type*/
+			eny_tor_msg.type = 0x62;//................type
+
+			/*setup circuit with new key*/
+			uint16_t send_port;
+			unsigned char src_port[2];
+			unsigned char *eny_port;
+
 			if(i != num_hop-1) {
 				/*create msg for next circuit */
+				send_port = rec_router_port[all_router[i+1]];
+				port_copyout(src_port, &send_port);
+
+				/*encrypt the port*/
+				eny_port = src_port;
 			} else {
 				/*send end of setup msg*/
+				send_port = 0xffff;
+				port_copyout(src_port, &send_port);
+
+				/*encrypt the port*/
+				eny_port = src_port;
 			}
+			/*set msg_len*/
+			eny_tor_msg.msg_len = 2;//.................msg_lem
+
+			/*append msg to packet*/
+			ency_msg_copyin(eny_tor_msg.msg, eny_port, eny_tor_msg.msg_len);//.......................................................msg
+			
+
 			/*send to first hop*/
+			proxy_udp_sender(all_router[0], (char *)&eny_tor_msg);
+
+			/*wait for the 0x63 msg*/
+			while(1) {
+				torrely_t *back_msg;
+				proxy_cir_reader(stage6buf);
+				//printf("..........here.........:%d\n", re_check->type);
+				/*check whether it is reply*/
+				back_msg = (torrely_t *)stage6buf;
+				//printf("Proxy: get tormsg back with type:%d\n",re_check->type);
+				if(back_msg->type == 0x63) {
+					printf("stage6:...%d...create circuit\n",i+1);
+					/*record to log file*/
+					//sprintf(filename, "stage%d.proxy.out", num_stage);
+					//sprintf(recline, "pkt from port: %d, length: 3, contents:0x%02X%04X:\n", pre_port, re_check->type, re_check->circuit_id);
+					//write_file(filename, recline);
+					//sprintf(recline, "incoming extend-done circuit done, incoming: %d from port: %d\n", re_check->circuit_id, pre_port);
+					//write_file(filename, recline);
+					break;
+				} else {
+					printf("!!!!got message but not circuit-extend-done!!!\n");
+				}
+			}
 		}
+	
 	/*********stage 6 tor encrypt-trans**********/
+		printf("stage6: proxy: I'm ready for encryption message send\n");
+
 	}
 	/*************************END of stage 6******************************/
 	/*************************only for stage 5****************************/
 	if(num_stage == 5) {
+		char stage5buf[2*MAXBUFLEN];
 		/***************stage 5 setup circuit******************/
 		/*create tor message*/
 		tormsg_t torext;
