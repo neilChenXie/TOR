@@ -1,3 +1,0 @@
-router: 1, pid: 8486, port: 41044
-ICMP from port:34278, src:10.0.2.15, dst:128.30.2.155, type:8
-ICMP from raw socket, src:128.30.2.155, dst:192.168.201.2, type:0
