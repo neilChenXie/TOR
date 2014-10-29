@@ -34,7 +34,7 @@ typedef struct{
 	uint8_t type;
 	uint16_t circuit_id;
 	int msg_len;
-	char msg[MAXBUFLEN];
+	char msg[2*MAXBUFLEN];
 }torrely_t;
 typedef struct{
 	uint16_t in_circuit;

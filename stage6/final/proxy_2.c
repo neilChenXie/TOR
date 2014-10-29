@@ -409,10 +409,30 @@ int main(int argc, char *argv[])
 							//icmp = (struct icmp*)(tor_relymsg->msg+hlenl);
 							//printf("stage5: router %d: ICMP from port:%d, src:%s, dst:%s, type:%d\n", count+1, pre_port, ipsrc, ipdst, icmp->icmp_type);
 							/******************/
+
+							/*stage 6 decryption the msg & cpy back to ency_router_tor->msg*/
+							int msg_len;
+							msg_len = ency_router_tor->msg_len;//........len
+							unsigned char ency_msg[msg_len];
+							ency_msg_copyout(ency_msg, ency_router_tor->msg, msg_len);//..........msg
+							/*decrypt the msg*/
+							unsigned char *my_decyp_msg;
+							unsigned char my_decyp_key[16];
+							int new_msg_len;
+							AES_KEY dec_key;
+
+							memcpy(my_decyp_key, router_cir_info.my_key, 16);
+							class_AES_set_decrypt_key(my_decyp_key, &dec_key);
+							class_AES_decrypt_with_padding(ency_msg, msg_len, &my_decyp_msg, &new_msg_len, &dec_key);
+							/*cpy it back*/
+							ency_msg_copyin(ency_router_tor->msg, my_decyp_msg, new_msg_len);//.....msg
+							ency_router_tor->circuit_id = router_cir_info.out_circuit;//.......circuit id
+							ency_router_tor->msg_len = new_msg_len;//..........................msg_len
+
 							/*check the outgoing port*/
 							if(router_cir_info.next_port != 0xffff) {
 								/*continue to rely*/
-								ency_router_tor->circuit_id = router_cir_info.out_circuit;
+								//ency_router_tor->circuit_id = router_cir_info.out_circuit;
 								router_cir_sender(routbuf, router_cir_info.next_port);
 								sprintf(recline,"\n");
 								write_file(filename, recline);
@@ -444,11 +464,35 @@ int main(int argc, char *argv[])
 					}
 					/*********0x64**********/
 					if(type == 0x64) {
-							/*continue to send back*/
-							ency_router_tor->circuit_id = router_cir_info.in_circuit;
-							router_cir_sender(routbuf, router_cir_info.pre_port);
-							//sprintf(recline,"\n");
-							//write_file(filename, recline);
+						/*encrypt the msg*/
+						unsigned char eny_tor_msg[2*MAXBUFLEN];
+						unsigned char *out_tor_msg;
+						int eny_tor_msg_len;
+						int out_tor_msg_len;
+
+						memcpy(eny_tor_msg, ency_router_tor->msg, ency_router_tor->msg_len);
+						eny_tor_msg_len = ency_router_tor->msg_len;
+
+						unsigned char temp_ency_key[16];
+						AES_KEY enc_key;
+						memcpy(temp_ency_key, router_cir_info.my_key, 16);
+						class_AES_set_encrypt_key(temp_ency_key,&enc_key);//set key
+						class_AES_encrypt_with_padding(eny_tor_msg, eny_tor_msg_len, &out_tor_msg, &out_tor_msg_len, &enc_key);
+						/*memcpy the new*/
+						memcpy(eny_tor_msg, out_tor_msg, out_tor_msg_len);
+						eny_tor_msg_len = out_tor_msg_len;
+						/*free the out*/
+						free(out_tor_msg);
+
+						/*copy it back*/
+						memcpy(ency_router_tor->msg, eny_tor_msg, eny_tor_msg_len);//..........msg
+						ency_router_tor->msg_len = eny_tor_msg_len;//..............msg_len
+
+						/*continue to send back*/
+						ency_router_tor->circuit_id = router_cir_info.in_circuit;//............circuit_id
+						router_cir_sender(routbuf, router_cir_info.pre_port);
+						//sprintf(recline,"\n");
+						//write_file(filename, recline);
 					}
 				}
 				if(rv == 3) {
@@ -487,10 +531,35 @@ int main(int argc, char *argv[])
 					torrely_t router_tor_msg;
 					router_tor_msg.type = 0x64;
 					router_tor_msg.circuit_id = router_cir_info.in_circuit;
+
 					tor_msg_create(router_tor_msg.msg, stage3buf);
+					/*********stage 6 encrypt the msg**************/
+					/*encrypt the msg*/
+					unsigned char eny_tor_msg[2*MAXBUFLEN];
+					unsigned char *out_tor_msg;
+					int eny_tor_msg_len;
+					int out_tor_msg_len;
+
+					memcpy(eny_tor_msg, router_tor_msg.msg, MAXBUFLEN);
+					eny_tor_msg_len = MAXBUFLEN;
+
+					unsigned char temp_ency_key[16];
+					AES_KEY enc_key;
+					memcpy(temp_ency_key, router_cir_info.my_key, 16);
+					class_AES_set_encrypt_key(temp_ency_key,&enc_key);//set key
+					class_AES_encrypt_with_padding(eny_tor_msg, eny_tor_msg_len, &out_tor_msg, &out_tor_msg_len, &enc_key);
+					/*memcpy the new*/
+					memcpy(eny_tor_msg, out_tor_msg, out_tor_msg_len);
+					eny_tor_msg_len = out_tor_msg_len;
+					/*free the out*/
+					free(out_tor_msg);
+
+					memcpy(router_tor_msg.msg, eny_tor_msg, eny_tor_msg_len);//..........msg
+					router_tor_msg.msg_len = eny_tor_msg_len;//..............msg_len
+					/***********************************************/
+
 					/*send to circuit*/
 					router_cir_sender((char *)&router_tor_msg, router_cir_info.pre_port);
-					/***********************************************/
 				}
 				/***************end of stage 6 router*****************/
 			}
@@ -896,6 +965,32 @@ int main(int argc, char *argv[])
 				if(final_tor_reply->type == 0x64) {
 					//	/*check whether the circuit id is the in_circuit*/
 					if(final_tor_reply->circuit_id == 1) { 
+
+						/*decypt the msg*/
+						int msg_len;
+						msg_len = final_tor_reply->msg_len;//........len
+						unsigned char ency_msg[msg_len];
+						ency_msg_copyout(ency_msg, final_tor_reply->msg, msg_len);//..........msg
+						/*decrypt the msg*/
+						unsigned char *my_decyp_msg;
+						unsigned char my_decyp_key[16];
+						int new_msg_len;
+						AES_KEY dec_key;
+						int qq;
+						for(qq = 0; qq < num_hop; qq++) {
+
+							memcpy(my_decyp_key, talk_key[qq].key, 16);
+							class_AES_set_decrypt_key(my_decyp_key, &dec_key);
+							class_AES_decrypt_with_padding(ency_msg, msg_len, &my_decyp_msg, &new_msg_len, &dec_key);
+							memcpy(ency_msg, my_decyp_msg, new_msg_len);
+							msg_len = new_msg_len;
+							/*free the out*/
+							free(my_decyp_msg);
+						}
+						/*cpy it back*/
+						ency_msg_copyin(final_tor_reply->msg, ency_msg, msg_len);//.....msg
+						final_tor_reply->msg_len = new_msg_len;//..........................msg_len
+
 						/*check the payload is right*/
 						ip = (struct ip *)(final_tor_reply->msg);
 						inet_ntop(AF_INET,(void*)&ip->ip_src,ipsrc,16);
@@ -953,8 +1048,32 @@ int main(int argc, char *argv[])
 				torrely_t proxy_tor_msg;
 				proxy_tor_msg.type = 0x61;
 				proxy_tor_msg.circuit_id = circuit;
-				tor_msg_create(proxy_tor_msg.msg, stage2buf);
-				/*************************/
+				/********stage 6***********/
+				int qq;
+				unsigned char eny_tor_msg[2*MAXBUFLEN];
+				unsigned char *out_tor_msg;
+				int eny_tor_msg_len;
+				int out_tor_msg_len;
+
+				memcpy(eny_tor_msg, stage2buf, MAXBUFLEN);
+				eny_tor_msg_len = MAXBUFLEN;
+
+				for(qq = num_hop-1; qq >= 0; qq--) {
+					unsigned char temp_ency_key[16];
+					AES_KEY enc_key;
+					memcpy(temp_ency_key, talk_key[qq].key, 16);
+					class_AES_set_encrypt_key(temp_ency_key,&enc_key);//set key
+					class_AES_encrypt_with_padding(eny_tor_msg, eny_tor_msg_len, &out_tor_msg, &out_tor_msg_len, &enc_key);
+					/*memcpy the new to key*/
+					memcpy(eny_tor_msg, out_tor_msg, out_tor_msg_len);
+					eny_tor_msg_len = out_tor_msg_len;
+					/*free the out*/
+					free(out_tor_msg);
+				}
+				//tor_msg_create(proxy_tor_msg.msg, stage2buf);
+				memcpy(proxy_tor_msg.msg, eny_tor_msg, eny_tor_msg_len);
+				proxy_tor_msg.msg_len = eny_tor_msg_len;
+				/************end of stage 6*************/
 				/*send message to router*/
 				//to_send = ntohl(ip->ip_dst.s_addr)%num_router;
 				printf("stage6: which router to send:%d\n", all_router[0]);
