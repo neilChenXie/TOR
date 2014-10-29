@@ -333,7 +333,7 @@ int main(int argc, char *argv[])
 						}
 					}
 					/**********0x62*********/
-					if(type == 0x62) {
+				if(type == 0x62) {
 						printf("stage6: router %d: !!!I got type 0x62 msg\n", count+1);
 						int msg_len;
 						msg_len = ency_router_tor->msg_len;//........len
@@ -343,10 +343,15 @@ int main(int argc, char *argv[])
 						ency_msg_copyout(ency_msg, ency_router_tor->msg, msg_len);//..........msg
 						/*decrypt the msg*/
 						unsigned char *my_decyp_msg;
+						unsigned char my_decyp_key[16];
 						int new_msg_len;
+						AES_KEY dec_key;
 
-						my_decyp_msg = ency_msg;//not encrypt now
-						new_msg_len = 2;
+						memcpy(my_decyp_key, router_cir_info.my_key, 16);
+						class_AES_set_decrypt_key(my_decyp_key, &dec_key);
+						class_AES_decrypt_with_padding(ency_msg, msg_len, &my_decyp_msg, &new_msg_len, &dec_key);
+						//my_decyp_msg = ency_msg;//not encrypt now
+						//new_msg_len = 2;
 
 						/*judge the msg is for who*/
 						if(router_cir_info.next_port == 0) {
@@ -626,7 +631,7 @@ int main(int argc, char *argv[])
 			/*encrypte symmetric key*/
 			/*test key*/
 			unsigned char *test_key = (unsigned char*)"onlyfortestuse!";
-			unsigned char eny_key[16];//this will be malloc mem
+			unsigned char eny_key[100];//this will be malloc mem
 			unsigned char *out_key;//will malloc
 			int key_len;
 			int new_key_len;
@@ -634,14 +639,14 @@ int main(int argc, char *argv[])
 			memcpy(eny_key, test_key, 16);
 			key_len = 16;
 			/*print and check the key*/
-			uint8_t che_key[key_len];
-			get_eny_msg(che_key, eny_key, key_len);
-			int l;
-			printf("stage6: proxy: eny_msg src: ");
-			for (l = 0; l < 16; l++) {
-				printf("%02X",che_key[l]);
-			}
-			printf("\n");
+			//uint8_t che_key[key_len];
+			//get_eny_msg(che_key, eny_key, key_len);
+			//int l;
+			//printf("stage6: proxy: eny_msg src: ");
+			//for (l = 0; l < 16; l++) {
+			//	printf("%02X",che_key[l]);
+			//}
+			//printf("\n");
 			/***********************/
 
 			/*encrypt the key: key_key*/
@@ -660,13 +665,13 @@ int main(int argc, char *argv[])
 			eny_tor_msg.msg_len = key_len;//.................msg_len
 			/*print and check the key*/
 			//uint8_t che_key[key_len];
-			get_eny_msg(che_key, eny_key, key_len);
+			//get_eny_msg(che_key, eny_key, key_len);
 			//int l;
-			printf("stage6: proxy: eny_msg to send: ");
-			for (l = 0; l < key_len; l++) {
-				printf("%02X",che_key[l]);
-			}
-			printf("\n");
+			//printf("stage6: proxy: eny_msg to send: ");
+			//for (l = 0; l < key_len; l++) {
+			//	printf("%02X",che_key[l]);
+			//}
+			//printf("\n");
 			/***********************/
 			/*TEST: decypt the eny_key*/
 			//unsigned char temp_decy_key[16];
@@ -699,25 +704,41 @@ int main(int argc, char *argv[])
 			/*setup circuit with new key*/
 			uint16_t send_port;
 			unsigned char src_port[2];
-			unsigned char *eny_port;
+			unsigned char eny_port[100];
+			unsigned char *out_port;
+			int eny_port_len;
+			int new_port_len;
 
 			if(i != num_hop-1) {
 				/*create msg for next circuit */
 				send_port = rec_router_port[all_router[i+1]];
 				port_copyout(src_port, &send_port);
 
-				/*encrypt the port*/
-				eny_port = src_port;
 			} else {
 				/*send end of setup msg*/
 				send_port = 0xffff;
 				port_copyout(src_port, &send_port);
-
-				/*encrypt the port*/
-				eny_port = src_port;
 			}
+			memcpy(eny_port, src_port, 2);
+			eny_port_len = 2;
+
+			/*encrypt the port*/
+			for(n = 0;n <= i; n++) { //n: # of hop to pass
+				unsigned char temp_ency_key[16];
+				AES_KEY enc_key;
+				memcpy(temp_ency_key, test_key,16);//make sure 128bit, 2nd for encryption
+				class_AES_set_encrypt_key(temp_ency_key,&enc_key);//set key
+				class_AES_encrypt_with_padding(eny_port, eny_port_len, &out_port, &new_port_len, &enc_key);
+				/*memcpy the new to key*/
+				memcpy(eny_port, out_port, new_port_len);
+				eny_port_len = new_port_len;
+				/*free the out*/
+				free(out_port);
+			}
+
 			/*set msg_len*/
-			eny_tor_msg.msg_len = 2;//.................msg_len
+			eny_tor_msg.msg_len = eny_port_len;//.................msg_len
+			//eny_tor_msg.msg_len = 2;//.................msg_len
 
 			/*append msg to packet*/
 			ency_msg_copyin(eny_tor_msg.msg, eny_port, eny_tor_msg.msg_len);//.......................................................msg
